@@ -5,6 +5,7 @@ from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.oxml.ns import nsdecls
 from docx.oxml import parse_xml
 import io
+import os
 
 def generate_docx(data):
     doc = Document()
@@ -20,12 +21,10 @@ def generate_docx(data):
     # Styles
     style = doc.styles['Normal']
     font = style.font
-    # 1. IZMAIŅA: Nomainīts fonts uz DejaVu Serif
     font.name = 'DejaVu Serif'
     font.size = Pt(10)
     
     # --- Header ---
-    # 2 columns table: Logo | Doc Info
     table = doc.add_table(rows=1, cols=2)
     table.autofit = False
     table.columns[0].width = Cm(10)
@@ -34,11 +33,18 @@ def generate_docx(data):
     # Logo
     cell_logo = table.cell(0, 0)
     paragraph = cell_logo.paragraphs[0]
+    
+    # 1. SOLIS: Drošs ceļš uz attēlu
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_filename = "BRATUS MELNS LOGO PNG.png"
+    logo_path = os.path.join(current_dir, logo_filename)
+    print(f"Meklēju DOCX logo šeit: {logo_path}")
+
     # Add logo if exists
     try:
-        # 2. IZMAIŅA: Nomainīts logo faila nosaukums
-        paragraph.add_run().add_picture('BRATUS MELNS LOGO PNG.png', width=Cm(4))
-    except:
+        paragraph.add_run().add_picture(logo_path, width=Cm(4))
+    except Exception as e:
+        print(f"Kļūda ievietojot attēlu DOCX (Fails: {logo_filename}): {e}")
         paragraph.add_run("LOGO")
         
     # Info
@@ -102,21 +108,18 @@ def generate_docx(data):
     items = data.get('items', [])
     
     table = doc.add_table(rows=1, cols=5)
-    table.style = 'Table Grid' # Or None
+    table.style = 'Table Grid'
     
     hdr_cells = table.rows[0].cells
     for i, h in enumerate(headers):
         hdr_cells[i].text = h
-        # Style header background
         tcPr = hdr_cells[i]._element.tcPr
         shd = parse_xml(r'<w:shd {} w:fill="CDBF96"/>'.format(nsdecls('w')))
         tcPr.append(shd)
-        # Bold and White text?
         p = hdr_cells[i].paragraphs[0]
         run = p.runs[0]
         run.bold = True
         run.font.color.rgb = RGBColor(255, 255, 255)
-        # Alignment
         if i >= 2:
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             
@@ -128,7 +131,6 @@ def generate_docx(data):
         row_cells[3].text = str(item['price'])
         row_cells[4].text = str(item['total'])
         
-        # Alignment
         row_cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
         row_cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
         row_cells[4].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -136,7 +138,6 @@ def generate_docx(data):
     doc.add_paragraph()
     
     # --- Totals ---
-    # Create a table for alignment
     table = doc.add_table(rows=3, cols=3)
     table.autofit = False
     table.columns[0].width = Cm(11)
@@ -210,25 +211,6 @@ def generate_docx(data):
 
 if __name__ == "__main__":
     # Test
-    data = {
-        'doc_type': 'Pavadzīme',
-        'doc_id': 'BR 0049',
-        'date': '09.01.2026',
-        'due_date': '23.01.2026',
-        'client_name': 'ARĀJIŅI, Rēzeknes rajona Nautrēnu pagasta zemnieku saimniecība',
-        'client_address': 'Rēzeknes nov., Nautrēnu pag., Rogovka, LV-4652',
-        'client_reg_no': '42401017811',
-        'client_vat_no': 'LV42401017811',
-        'items': [
-            {'name': 'Lāzeriekārta; modeļa nr.: KH7050; 80W', 'unit': 'Gab.', 'qty': '1', 'price': '4 505,00', 'total': '4 505,00'}
-        ],
-        'subtotal': '4 505,00',
-        'vat': '946,05',
-        'total': '5 451,05',
-        'amount_words': 'Pieci tūkstoši četri simti piecdesmit viens eiro 05 centi',
-        'signatory': 'SIA Bratus valdes loceklis Adrians Stankevičs'
-    }
+    data = {'doc_type': 'Test', 'doc_id': '001'} 
     docx_file = generate_docx(data)
-    with open("test_output.docx", "wb") as f:
-        f.write(docx_file.read())
     print("DOCX generated.")
