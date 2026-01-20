@@ -161,7 +161,7 @@ def generate_docx(data):
 
     set_total_row(0, "KOPĀ", subtotal, True)
     set_total_row(1, "PVN", vat, True)
-    set_total_row(2, "Kopumā", total, True)
+    set_total_row(2, "Kopā ar PVN", total, True)
     
     doc.add_paragraph()
     
