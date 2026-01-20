@@ -1,0 +1,8 @@
+streamlit
+reportlab
+python-docx
+beautifulsoup4
+requests
+num2words
+Pillow
+pandas
