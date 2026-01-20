@@ -5,18 +5,16 @@ import re
 
 def money_to_words_lv(amount):
     """
-    Converts amount to Latvian words string.
-    Example: 4505.00 -> "Četri tūkstoši pieci simti pieci eiro 00 centi"
+    Konvertē summu uz vārdiem latviešu valodā.
+    Piemērs: 4505.00 -> "Četri tūkstoši pieci simti pieci eiro 00 centi"
     """
     try:
         euros = int(amount)
         cents = int(round((amount - euros) * 100))
         
         words = num2words(euros, lang='lv')
-        # num2words output is lowercase usually.
-        # Format: "{words} eiro {cents:02d} centi"
         
-        # Capitalize first letter
+        # Pirmā burta lielais sākums
         words = words.capitalize()
         
         return f"{words} eiro {cents:02d} centi"
@@ -25,8 +23,8 @@ def money_to_words_lv(amount):
 
 def scrape_lursoft(url):
     """
-    Attempts to scrape Company Name, Reg No, and Address from a Lursoft URL.
-    Returns a dict or None.
+    Mēģina nolasīt Uzņēmuma nosaukumu, Reģ. Nr. un Adresi no Lursoft URL.
+    Atgriež vārdnīcu (dict) vai None.
     """
     try:
         headers = {
@@ -38,8 +36,7 @@ def scrape_lursoft(url):
         soup = BeautifulSoup(response.text, 'html.parser')
         data = {}
         
-        # 1. Company Name
-        # Often in <h1 itemprop="name"> or just <h1>
+        # 1. Nosaukums (Company Name)
         h1 = soup.find('h1')
         if h1:
             data['name'] = h1.get_text(strip=True)
@@ -48,48 +45,61 @@ def scrape_lursoft(url):
             if soup.title:
                 data['name'] = soup.title.get_text(strip=True).split('-')[0].strip()
 
-        # 2. Reg No
-        # Search for text "Reģistrācijas numurs"
+        # 2. Reģistrācijas numurs (Reg No)
+        # Meklējam tekstu "Reģistrācijas numurs"
         reg_label = soup.find(string=re.compile(r"Reģistrācijas numurs", re.I))
+        
         if reg_label:
             parent = reg_label.parent
-            # Check for value in next sibling td
-            if parent.name == 'td':
-                next_td = parent.find_next_sibling('td')
-                if next_td:
-                    data['reg_no'] = next_td.get_text(strip=True)
-            elif parent.name in ['div', 'span', 'p', 'b', 'strong']:
-                 # Try to extract numbers from the text if it's "Reģistrācijas numurs: 4000..."
-                 full_text = parent.get_text(strip=True)
-                 match = re.search(r"Reģistrācijas numurs\s*:?\s*(\d+)", full_text, re.I)
-                 if match:
-                     data['reg_no'] = match.group(1)
-                 else:
-                     # Check next sibling
-                     next_el = parent.find_next_sibling()
-                     if next_el:
-                         data['reg_no'] = next_el.get_text(strip=True)
+            reg_text_candidates = []
+            
+            # Pārbaudām nākamo elementu (ja tā ir tabulas šūna)
+            next_td = parent.find_next_sibling('td')
+            if next_td:
+                reg_text_candidates.append(next_td.get_text(strip=True))
+            
+            # Pārbaudām nākamo elementu (ja tas ir vienkārši nākamais tags)
+            next_el = parent.find_next_sibling()
+            if next_el:
+                reg_text_candidates.append(next_el.get_text(strip=True))
+                
+            # Pārbaudām arī pašu elementu (ja numurs ir vienā virknē ar nosaukumu)
+            reg_text_candidates.append(parent.get_text(strip=True))
+            
+            # Meklējam precīzi 11 ciparus jebkurā no atrastajiem tekstiem
+            for text in reg_text_candidates:
+                # \d{11} nozīmē "tieši 11 cipari"
+                match = re.search(r"(\d{11})", text)
+                if match:
+                    data['reg_no'] = match.group(1)
+                    break
 
-        # 3. Address
+        # 3. Adrese (Address)
         addr_label = soup.find(string=re.compile(r"Juridiskā adrese|Adrese", re.I))
         if addr_label:
             parent = addr_label.parent
-            if parent.name == 'td':
-                next_td = parent.find_next_sibling('td')
-                if next_td:
-                    data['address'] = next_td.get_text(strip=True)
+            raw_address = ""
+            
+            next_td = parent.find_next_sibling('td')
+            if next_td:
+                raw_address = next_td.get_text(strip=True)
             else:
-                 # Try to clean up text
                  next_el = parent.find_next_sibling()
                  if next_el:
-                     data['address'] = next_el.get_text(strip=True)
+                     raw_address = next_el.get_text(strip=True)
                  else:
-                     # Maybe in the same tag?
+                     # Ja ir vienā tagā, mēģinām atdalīt ar kolu
                      full_text = parent.get_text(strip=True)
-                     # Try to split by colon
                      parts = full_text.split(':', 1)
                      if len(parts) > 1:
-                         data['address'] = parts[1].strip()
+                         raw_address = parts[1].strip()
+                     else:
+                         raw_address = full_text
+
+            # Tīrīšana: noņemam "Juridiskā adrese" vai "Adrese" no teksta sākuma, ja tas tur palicis
+            clean_address = re.sub(r"^(Juridiskā adrese|Adrese)\s*:?\s*", "", raw_address, flags=re.I)
+            if clean_address:
+                data['address'] = clean_address.strip()
 
         return data
     except Exception as e:
