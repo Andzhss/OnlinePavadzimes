@@ -9,14 +9,12 @@ from reportlab.lib.enums import TA_RIGHT, TA_LEFT, TA_CENTER
 import io
 import os
 
-# Register Fonts
-# Izmaiņa 1: Ceļi nomainīti uz DejaVu Serif (Sans vietā)
+# --- Fontu iestatījumi ---
 FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
 FONT_BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-FONT_ITALIC_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf" # Serif izmanto Italic, nevis Oblique
+FONT_ITALIC_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf"
 
 if os.path.exists(FONT_PATH):
-    # Reģistrējam fontu ar jauno nosaukumu 'DejaVuSerif'
     pdfmetrics.registerFont(TTFont('DejaVuSerif', FONT_PATH))
     REGULAR_FONT = 'DejaVuSerif'
     
@@ -24,15 +22,14 @@ if os.path.exists(FONT_PATH):
         pdfmetrics.registerFont(TTFont('DejaVuSerif-Bold', FONT_BOLD_PATH))
         BOLD_FONT = 'DejaVuSerif-Bold'
     else:
-        BOLD_FONT = 'DejaVuSerif' # Fallback
+        BOLD_FONT = 'DejaVuSerif'
         
     if os.path.exists(FONT_ITALIC_PATH):
         pdfmetrics.registerFont(TTFont('DejaVuSerif-Italic', FONT_ITALIC_PATH))
         ITALIC_FONT = 'DejaVuSerif-Italic'
     else:
-        ITALIC_FONT = 'DejaVuSerif' # Fallback to regular if italic missing
+        ITALIC_FONT = 'DejaVuSerif'
 else:
-    # Rezerves fonti, ja sistēmas fonti nav atrasti
     REGULAR_FONT = 'Helvetica'
     BOLD_FONT = 'Helvetica-Bold'
     ITALIC_FONT = 'Helvetica-Oblique'
@@ -44,7 +41,8 @@ def generate_pdf(data):
                             topMargin=20*mm, bottomMargin=20*mm)
     
     styles = getSampleStyleSheet()
-    # Define custom styles
+    
+    # Stilu definīcijas
     style_normal = ParagraphStyle(
         'CustomNormal',
         parent=styles['Normal'],
@@ -86,11 +84,20 @@ def generate_pdf(data):
     elements = []
     
     # --- Header Section ---
-    # Izmaiņa 2: Nomainīts logo faila nosaukums
-    logo_path = "BRATUS MELNS LOGO PNG.png"
+    
+    # 1. SOLIS: Nosakām precīzu ceļu uz attēlu
+    # Tas atrod skripta atrašanās vietu un meklē failu turpat
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    logo_filename = "BRATUS MELNS LOGO PNG.png"
+    logo_path = os.path.join(current_dir, logo_filename)
+    
+    # Debugs: izdrukājam konsolē, kur skripts meklē failu
+    print(f"Meklēju PDF logo šeit: {logo_path}")
+
     if os.path.exists(logo_path):
         logo = RLImage(logo_path, width=40*mm, height=30*mm, kind='proportional') 
     else:
+        print(f"KĻŪDA: Logo fails '{logo_filename}' netika atrasts mapē '{current_dir}'!")
         logo = Paragraph("LOGO", style_bold)
     
     doc_type = data.get('doc_type', 'Pavadzīme')
@@ -103,9 +110,6 @@ def generate_pdf(data):
         Paragraph(f"Datums: {date}", style_header_right_small),
         Paragraph(f"Apmaksāt līdz: {due_date}", style_header_right_small),
     ]
-    
-    # Right column needs to be a list of flowables or a single flowable
-    # We can use a nested table or just pass the list
     
     header_table = Table([[logo, header_text]], colWidths=[100*mm, 70*mm])
     header_table.setStyle(TableStyle([
@@ -151,20 +155,7 @@ def generate_pdf(data):
     # --- Items Table ---
     headers = ["NOSAUKUMS", "Mērvienība", "DAUDZUMS", "CENA (EUR)", "KOPĀ (EUR)"]
     
-    # Style for headers
-    header_style = ParagraphStyle(
-        'HeaderStyle',
-        parent=styles['Normal'],
-        fontName=BOLD_FONT,
-        fontSize=10,
-        textColor=colors.white,
-        alignment=TA_CENTER
-    )
-    
-    # Data Rows
-    # Convert headers to Paragraphs for white color? Or use table style for text color
-    # Using TableStyle TEXTCOLOR is easier if simple strings.
-    # But we want bold headers.
+    # Header style implicitly handled by table style below
     
     table_data = [headers]
     items = data.get('items', [])
@@ -186,9 +177,9 @@ def generate_pdf(data):
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
         ('FONTNAME', (0,0), (-1,0), BOLD_FONT),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'), 
-        ('ALIGN', (2,0), (-1,-1), 'RIGHT'), # Qty right
-        ('ALIGN', (3,0), (-1,-1), 'RIGHT'), # Price right
-        ('ALIGN', (4,0), (-1,-1), 'RIGHT'), # Total right
+        ('ALIGN', (2,0), (-1,-1), 'RIGHT'),
+        ('ALIGN', (3,0), (-1,-1), 'RIGHT'),
+        ('ALIGN', (4,0), (-1,-1), 'RIGHT'),
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
         ('FONTNAME', (0,1), (-1,-1), REGULAR_FONT),
         ('BOTTOMPADDING', (0,0), (-1,-1), 6),
@@ -218,7 +209,7 @@ def generate_pdf(data):
     elements.append(totals_table)
     elements.append(Spacer(1, 5*mm))
     
-    # Amount in words
+    # Amount words
     amount_words = data.get('amount_words', '')
     elements.append(Paragraph(f"<i>Summa vārdiem: {amount_words}</i>", style_italic))
     elements.append(Spacer(1, 10*mm))
@@ -229,7 +220,6 @@ def generate_pdf(data):
     
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
     
-    # Handle grammar
     if doc_type == "Pavadzīme":
         prepared_text = f"Pavadzīmi sagatavoja: {signatory}"
         received_text = "Pavadzīmi saņēma:"
@@ -255,24 +245,20 @@ def generate_pdf(data):
     return buffer
 
 if __name__ == "__main__":
-    # Test
+    # Test data
     data = {
         'doc_type': 'Pavadzīme',
         'doc_id': 'BR 0049',
         'date': '09.01.2026',
         'due_date': '23.01.2026',
-        'client_name': 'ARĀJIŅI, Rēzeknes rajona Nautrēnu pagasta zemnieku saimniecība',
-        'client_address': 'Rēzeknes nov., Nautrēnu pag., Rogovka, LV-4652',
-        'client_reg_no': '42401017811',
-        'client_vat_no': 'LV42401017811',
-        'items': [
-            {'name': 'Lāzeriekārta; modeļa nr.: KH7050; 80W', 'unit': 'Gab.', 'qty': '1', 'price': '4 505,00', 'total': '4 505,00'}
-        ],
-        'subtotal': '4 505,00',
-        'vat': '946,05',
-        'total': '5 451,05',
-        'amount_words': 'Pieci tūkstoši četri simti piecdesmit viens eiro 05 centi',
-        'signatory': 'SIA Bratus valdes loceklis Adrians Stankevičs'
+        'client_name': 'TEST KLIENTS',
+        'client_address': 'Adrese',
+        'client_reg_no': '000000',
+        'client_vat_no': 'LV00000',
+        'items': [{'name': 'Prece', 'unit': 'gab', 'qty': 1, 'price': '10.00', 'total': '10.00'}],
+        'subtotal': '10.00', 'vat': '2.10', 'total': '12.10',
+        'amount_words': 'Desmit eiro',
+        'signatory': 'Parakstītājs'
     }
     pdf = generate_pdf(data)
     with open("test_output.pdf", "wb") as f:
