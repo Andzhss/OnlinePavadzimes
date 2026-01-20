@@ -196,7 +196,7 @@ def generate_pdf(data):
     totals_data = [
         ["", "KOPĀ", f"€ {subtotal}"],
         ["", "PVN", f"€ {vat}"],
-        ["", "Kopumā", f"€ {total}"]
+        ["", "Kopā ar PVN", f"€ {total}"]
     ]
     
     totals_table = Table(totals_data, colWidths=[110*mm, 30*mm, 30*mm])
