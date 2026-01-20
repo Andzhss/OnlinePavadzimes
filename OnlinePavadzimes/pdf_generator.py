@@ -10,26 +10,29 @@ import io
 import os
 
 # Register Fonts
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONT_BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-FONT_ITALIC_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf" # This might not exist
+# Izmaiņa 1: Ceļi nomainīti uz DejaVu Serif (Sans vietā)
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
+FONT_BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+FONT_ITALIC_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf" # Serif izmanto Italic, nevis Oblique
 
 if os.path.exists(FONT_PATH):
-    pdfmetrics.registerFont(TTFont('DejaVuSans', FONT_PATH))
-    REGULAR_FONT = 'DejaVuSans'
+    # Reģistrējam fontu ar jauno nosaukumu 'DejaVuSerif'
+    pdfmetrics.registerFont(TTFont('DejaVuSerif', FONT_PATH))
+    REGULAR_FONT = 'DejaVuSerif'
     
     if os.path.exists(FONT_BOLD_PATH):
-        pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', FONT_BOLD_PATH))
-        BOLD_FONT = 'DejaVuSans-Bold'
+        pdfmetrics.registerFont(TTFont('DejaVuSerif-Bold', FONT_BOLD_PATH))
+        BOLD_FONT = 'DejaVuSerif-Bold'
     else:
-        BOLD_FONT = 'DejaVuSans' # Fallback
+        BOLD_FONT = 'DejaVuSerif' # Fallback
         
     if os.path.exists(FONT_ITALIC_PATH):
-        pdfmetrics.registerFont(TTFont('DejaVuSans-Oblique', FONT_ITALIC_PATH))
-        ITALIC_FONT = 'DejaVuSans-Oblique'
+        pdfmetrics.registerFont(TTFont('DejaVuSerif-Italic', FONT_ITALIC_PATH))
+        ITALIC_FONT = 'DejaVuSerif-Italic'
     else:
-        ITALIC_FONT = 'DejaVuSans' # Fallback to regular if italic missing
+        ITALIC_FONT = 'DejaVuSerif' # Fallback to regular if italic missing
 else:
+    # Rezerves fonti, ja sistēmas fonti nav atrasti
     REGULAR_FONT = 'Helvetica'
     BOLD_FONT = 'Helvetica-Bold'
     ITALIC_FONT = 'Helvetica-Oblique'
@@ -83,7 +86,8 @@ def generate_pdf(data):
     elements = []
     
     # --- Header Section ---
-    logo_path = "logo.png"
+    # Izmaiņa 2: Nomainīts logo faila nosaukums
+    logo_path = "BRATUS MELNS LOGO PNG.png"
     if os.path.exists(logo_path):
         logo = RLImage(logo_path, width=40*mm, height=30*mm, kind='proportional') 
     else:
