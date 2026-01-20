@@ -75,7 +75,7 @@ def scrape_lursoft(url):
                     break
 
         # 3. Adrese (Address)
-        # IZMAIŅA: Meklējam stingri "Juridiskā adrese", lai nepaķertu navigācijas joslu "Uzņēmumi / ... / Adreses"
+        # Meklējam "Juridiskā adrese" (lai izvairītos no navigācijas joslas "Adreses")
         addr_label = soup.find(string=re.compile(r"Juridiskā adrese", re.I))
         
         if addr_label:
@@ -85,7 +85,7 @@ def scrape_lursoft(url):
             # 1. variants: Adrese ir blakus esošajā tabulas šūnā (TD)
             next_td = parent.find_next_sibling('td')
             
-            # 2. variants: Adrese ir nākamajā elementā (piemēram, <p> vai <span>)
+            # 2. variants: Adrese ir nākamajā elementā
             next_el = parent.find_next_sibling()
             
             if next_td:
@@ -93,20 +93,29 @@ def scrape_lursoft(url):
             elif next_el:
                  raw_address = next_el.get_text(strip=True)
             else:
-                 # 3. variants: Adrese ir tajā pašā tagā aiz kola (Juridiskā adrese: Rīga...)
+                 # 3. variants: Adrese ir tajā pašā tagā aiz kola
                  full_text = parent.get_text(strip=True)
                  parts = full_text.split(':', 1)
                  if len(parts) > 1:
                      raw_address = parts[1].strip()
 
-            # Tīrīšana: 
-            # Dažreiz tekstā joprojām ir "Juridiskā adrese", ja tas paņemts no parent elementa.
-            # Noņemam liekos vārdus un atstājam tikai pašu adresi.
+            # --- TĪRĪŠANA ---
+            
+            # 1. Noņemam "Juridiskā adrese:" sākumā
             clean_address = re.sub(r"^(Juridiskā adrese|Adrese)\s*:?\s*", "", raw_address, flags=re.I)
+            
+            # 2. JAUNS: Noņemam visu tekstu, sākot ar "Adresē reģistrēti" (ignorējam reģistrēto uzņēmumu skaitu)
+            # split atgriež sarakstu, paņemam pirmo daļu [0]
+            clean_address = re.split(r"Adresē reģistrēti", clean_address, flags=re.I)[0]
+            
+            # 3. Papildus tīrīšana: noņemam "Skatīt kartē" vai tamlīdzīgus atlikumus, ja tādi parādās beigās
+            # (Tas nav obligāti, bet var noderēt)
+            
+            clean_address = clean_address.strip()
             
             # Pēdējā pārbaude - ja rezultāts satur "Uzņēmumi /", tad tas tomēr ir navigācijas elements (fail safe)
             if clean_address and "Uzņēmumi" not in clean_address:
-                data['address'] = clean_address.strip()
+                data['address'] = clean_address
 
         return data
     except Exception as e:
