@@ -136,7 +136,7 @@ def main():
             with t_col2:
                 st.markdown(f"**KOPĀ:** € {fmt_curr(subtotal)}")
                 st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
-                st.markdown(f"**Kopumā:** € {fmt_curr(total)}")
+                st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
             
             # Amount in words
             amount_words = money_to_words_lv(total)
