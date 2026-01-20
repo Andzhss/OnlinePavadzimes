@@ -1,208 +1,256 @@
-from docx import Document
-from docx.shared import Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_ALIGN_VERTICAL
-from docx.oxml.ns import nsdecls
-from docx.oxml import parse_xml
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.enums import TA_RIGHT, TA_LEFT, TA_CENTER
 import io
+import os
 
-def generate_docx(data):
-    doc = Document()
+# Register Fonts
+# Izmaiņa 1: Ceļi nomainīti uz DejaVu Serif (Sans vietā)
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
+FONT_BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+FONT_ITALIC_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf" # Serif izmanto Italic, nevis Oblique
+
+if os.path.exists(FONT_PATH):
+    # Reģistrējam fontu ar jauno nosaukumu 'DejaVuSerif'
+    pdfmetrics.registerFont(TTFont('DejaVuSerif', FONT_PATH))
+    REGULAR_FONT = 'DejaVuSerif'
     
-    # Set margins
-    sections = doc.sections
-    for section in sections:
-        section.top_margin = Cm(2)
-        section.bottom_margin = Cm(2)
-        section.left_margin = Cm(2)
-        section.right_margin = Cm(2)
+    if os.path.exists(FONT_BOLD_PATH):
+        pdfmetrics.registerFont(TTFont('DejaVuSerif-Bold', FONT_BOLD_PATH))
+        BOLD_FONT = 'DejaVuSerif-Bold'
+    else:
+        BOLD_FONT = 'DejaVuSerif' # Fallback
         
-    # Styles
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Arial'
-    font.size = Pt(10)
+    if os.path.exists(FONT_ITALIC_PATH):
+        pdfmetrics.registerFont(TTFont('DejaVuSerif-Italic', FONT_ITALIC_PATH))
+        ITALIC_FONT = 'DejaVuSerif-Italic'
+    else:
+        ITALIC_FONT = 'DejaVuSerif' # Fallback to regular if italic missing
+else:
+    # Rezerves fonti, ja sistēmas fonti nav atrasti
+    REGULAR_FONT = 'Helvetica'
+    BOLD_FONT = 'Helvetica-Bold'
+    ITALIC_FONT = 'Helvetica-Oblique'
+
+def generate_pdf(data):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+                            rightMargin=20*mm, leftMargin=20*mm,
+                            topMargin=20*mm, bottomMargin=20*mm)
     
-    # --- Header ---
-    # 2 columns table: Logo | Doc Info
-    table = doc.add_table(rows=1, cols=2)
-    table.autofit = False
-    table.columns[0].width = Cm(10)
-    table.columns[1].width = Cm(7)
+    styles = getSampleStyleSheet()
+    # Define custom styles
+    style_normal = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontName=REGULAR_FONT,
+        fontSize=10,
+        leading=14
+    )
+    style_bold = ParagraphStyle(
+        'CustomBold',
+        parent=styles['Normal'],
+        fontName=BOLD_FONT,
+        fontSize=10,
+        leading=14
+    )
+    style_italic = ParagraphStyle(
+        'CustomItalic',
+        parent=styles['Normal'],
+        fontName=ITALIC_FONT,
+        fontSize=10,
+        leading=14
+    )
+    style_header_right = ParagraphStyle(
+        'HeaderRight',
+        parent=styles['Normal'],
+        fontName=BOLD_FONT,
+        fontSize=12,
+        alignment=TA_RIGHT,
+        leading=16
+    )
+    style_header_right_small = ParagraphStyle(
+        'HeaderRightSmall',
+        parent=styles['Normal'],
+        fontName=REGULAR_FONT,
+        fontSize=10,
+        alignment=TA_RIGHT,
+        leading=12
+    )
     
-    # Logo
-    cell_logo = table.cell(0, 0)
-    paragraph = cell_logo.paragraphs[0]
-    # Add logo if exists
-    try:
-        paragraph.add_run().add_picture('logo.png', width=Cm(4))
-    except:
-        paragraph.add_run("LOGO")
-        
-    # Info
-    cell_info = table.cell(0, 1)
-    p = cell_info.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    elements = []
+    
+    # --- Header Section ---
+    # Izmaiņa 2: Nomainīts logo faila nosaukums
+    logo_path = "BRATUS MELNS LOGO PNG.png"
+    if os.path.exists(logo_path):
+        logo = RLImage(logo_path, width=40*mm, height=30*mm, kind='proportional') 
+    else:
+        logo = Paragraph("LOGO", style_bold)
     
     doc_type = data.get('doc_type', 'Pavadzīme')
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
     due_date = data.get('due_date', '')
     
-    run = p.add_run(f"{doc_type} Nr. {doc_id}\n")
-    run.bold = True
-    run.font.size = Pt(12)
+    header_text = [
+        Paragraph(f"{doc_type} Nr. {doc_id}", style_header_right),
+        Paragraph(f"Datums: {date}", style_header_right_small),
+        Paragraph(f"Apmaksāt līdz: {due_date}", style_header_right_small),
+    ]
     
-    p.add_run(f"Datums: {date}\n")
-    p.add_run(f"Apmaksāt līdz: {due_date}")
+    # Right column needs to be a list of flowables or a single flowable
+    # We can use a nested table or just pass the list
     
-    doc.add_paragraph() # Spacer
+    header_table = Table([[logo, header_text]], colWidths=[100*mm, 70*mm])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 10*mm))
     
-    # --- Client ---
-    p = doc.add_paragraph()
-    p.add_run("KLIENTS").bold = True
+    # --- Client Section ---
+    elements.append(Paragraph("KLIENTS", style_bold))
+    elements.append(Spacer(1, 2*mm))
+    elements.append(Paragraph(f"<b>{data.get('client_name', '')}</b>", style_normal))
+    elements.append(Paragraph(f"Adrese: {data.get('client_address', '')}", style_normal))
+    elements.append(Paragraph(f"Reģ. Nr.: {data.get('client_reg_no', '')}", style_normal))
+    elements.append(Paragraph(f"PVN Nr.: {data.get('client_vat_no', '')}", style_normal))
     
-    p = doc.add_paragraph()
-    p.add_run(data.get('client_name', '')).bold = True
-    p.add_run(f"\nAdrese: {data.get('client_address', '')}")
-    p.add_run(f"\nReģ. Nr.: {data.get('client_reg_no', '')}")
-    p.add_run(f"\nPVN Nr.: {data.get('client_vat_no', '')}")
+    elements.append(Spacer(1, 10*mm))
     
-    doc.add_paragraph()
+    # --- Sender & Bank Section ---
+    sender_info = [
+        Paragraph("<b>SIA Bratus</b>", style_normal),
+        Paragraph("Adrese: Ķekavas nov., Ķekava,", style_normal),
+        Paragraph("Dārzenieku iela 42, LV-2123", style_normal),
+        Paragraph("Reģ. Nr.: 40203628316", style_normal),
+        Paragraph("PVN Nr.: LV40203628316", style_normal),
+        Paragraph("Tālrunis: +371 24424434", style_normal),
+    ]
     
-    # --- Sender & Bank ---
-    table = doc.add_table(rows=1, cols=2)
-    table.autofit = False
-    table.columns[0].width = Cm(8.5)
-    table.columns[1].width = Cm(8.5)
+    bank_info = [
+        Paragraph("<b>AS Swedbank</b>", style_normal),
+        Paragraph("SWIFT/BIC: HABALV22", style_normal),
+        Paragraph("Bankas konta numurs: LV64HABA0551060367591", style_normal),
+    ]
     
-    # Sender
-    cell = table.cell(0, 0)
-    p = cell.paragraphs[0]
-    p.add_run("SIA Bratus").bold = True
-    p.add_run("\nAdrese: Ķekavas nov., Ķekava,")
-    p.add_run("\nDārzenieku iela 42, LV-2123")
-    p.add_run("\nReģ. Nr.: 40203628316")
-    p.add_run("\nPVN Nr.: LV40203628316")
-    p.add_run("\nTālrunis: +371 24424434")
-    
-    # Bank
-    cell = table.cell(0, 1)
-    p = cell.paragraphs[0]
-    p.add_run("AS Swedbank").bold = True
-    p.add_run("\nSWIFT/BIC: HABALV22")
-    p.add_run("\nBankas konta numurs: LV64HABA0551060367591")
-    
-    doc.add_paragraph()
+    sender_table = Table([[sender_info, bank_info]], colWidths=[85*mm, 85*mm])
+    sender_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ]))
+    elements.append(sender_table)
+    elements.append(Spacer(1, 10*mm))
     
     # --- Items Table ---
     headers = ["NOSAUKUMS", "Mērvienība", "DAUDZUMS", "CENA (EUR)", "KOPĀ (EUR)"]
+    
+    # Style for headers
+    header_style = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontName=BOLD_FONT,
+        fontSize=10,
+        textColor=colors.white,
+        alignment=TA_CENTER
+    )
+    
+    # Data Rows
+    # Convert headers to Paragraphs for white color? Or use table style for text color
+    # Using TableStyle TEXTCOLOR is easier if simple strings.
+    # But we want bold headers.
+    
+    table_data = [headers]
     items = data.get('items', [])
-    
-    table = doc.add_table(rows=1, cols=5)
-    table.style = 'Table Grid' # Or None
-    
-    hdr_cells = table.rows[0].cells
-    for i, h in enumerate(headers):
-        hdr_cells[i].text = h
-        # Style header background
-        tcPr = hdr_cells[i]._element.tcPr
-        shd = parse_xml(r'<w:shd {} w:fill="CDBF96"/>'.format(nsdecls('w')))
-        tcPr.append(shd)
-        # Bold and White text?
-        p = hdr_cells[i].paragraphs[0]
-        run = p.runs[0]
-        run.bold = True
-        run.font.color.rgb = RGBColor(255, 255, 255)
-        # Alignment
-        if i >= 2:
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            
     for item in items:
-        row_cells = table.add_row().cells
-        row_cells[0].text = item['name']
-        row_cells[1].text = item['unit']
-        row_cells[2].text = str(item['qty'])
-        row_cells[3].text = str(item['price'])
-        row_cells[4].text = str(item['total'])
+        table_data.append([
+            Paragraph(item['name'], style_normal),
+            item['unit'],
+            item['qty'],
+            item['price'],
+            item['total']
+        ])
         
-        # Alignment
-        row_cells[2].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        row_cells[3].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        row_cells[4].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        
-    doc.add_paragraph()
+    t = Table(table_data, colWidths=[60*mm, 30*mm, 25*mm, 25*mm, 30*mm])
+    
+    header_color = colors.HexColor("#CDBF96")
+    
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), header_color),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('FONTNAME', (0,0), (-1,0), BOLD_FONT),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'), 
+        ('ALIGN', (2,0), (-1,-1), 'RIGHT'), # Qty right
+        ('ALIGN', (3,0), (-1,-1), 'RIGHT'), # Price right
+        ('ALIGN', (4,0), (-1,-1), 'RIGHT'), # Total right
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('FONTNAME', (0,1), (-1,-1), REGULAR_FONT),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(t)
+    elements.append(Spacer(1, 10*mm))
     
     # --- Totals ---
-    # Create a table for alignment
-    table = doc.add_table(rows=3, cols=3)
-    table.autofit = False
-    table.columns[0].width = Cm(11)
-    table.columns[1].width = Cm(3)
-    table.columns[2].width = Cm(3)
-    
     subtotal = data.get('subtotal', '0.00')
     vat = data.get('vat', '0.00')
     total = data.get('total', '0.00')
     
-    def set_total_row(row_idx, label, value, bold=False):
-        cell_lbl = table.cell(row_idx, 1)
-        cell_val = table.cell(row_idx, 2)
-        p = cell_lbl.paragraphs[0]
-        p.add_run(label).bold = True
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        
-        p = cell_val.paragraphs[0]
-        p.add_run(f"€ {value}").bold = bold
-        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-
-    set_total_row(0, "KOPĀ", subtotal, True)
-    set_total_row(1, "PVN", vat, True)
-    set_total_row(2, "Kopumā", total, True)
+    totals_data = [
+        ["", "KOPĀ", f"€ {subtotal}"],
+        ["", "PVN", f"€ {vat}"],
+        ["", "Kopumā", f"€ {total}"]
+    ]
     
-    doc.add_paragraph()
+    totals_table = Table(totals_data, colWidths=[110*mm, 30*mm, 30*mm])
+    totals_table.setStyle(TableStyle([
+        ('ALIGN', (1,0), (1,2), 'RIGHT'),
+        ('ALIGN', (2,0), (2,2), 'RIGHT'),
+        ('FONTNAME', (1,0), (-1,-1), BOLD_FONT),
+        ('FONTNAME', (2,0), (-1,-1), BOLD_FONT),
+    ]))
+    elements.append(totals_table)
+    elements.append(Spacer(1, 5*mm))
     
-    # Amount words
-    p = doc.add_paragraph()
-    p.add_run(f"Summa vārdiem: {data.get('amount_words', '')}").italic = True
+    # Amount in words
+    amount_words = data.get('amount_words', '')
+    elements.append(Paragraph(f"<i>Summa vārdiem: {amount_words}</i>", style_italic))
+    elements.append(Spacer(1, 10*mm))
     
-    doc.add_paragraph()
-    doc.add_paragraph().add_run("Papildus informācija:").bold = True
-    doc.add_paragraph()
+    # --- Footer / Signatures ---
+    elements.append(Paragraph("<b>Papildus informācija:</b>", style_normal))
+    elements.append(Spacer(1, 5*mm))
     
-    # --- Signatures ---
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
     
+    # Handle grammar
     if doc_type == "Pavadzīme":
         prepared_text = f"Pavadzīmi sagatavoja: {signatory}"
         received_text = "Pavadzīmi saņēma:"
-    else:
+    else: # Rēķins
         prepared_text = f"Rēķinu sagatavoja: {signatory}"
         received_text = "Rēķinu saņēma:"
-        
-    table = doc.add_table(rows=2, cols=2)
-    table.autofit = False
-    table.columns[0].width = Cm(10)
-    table.columns[1].width = Cm(7)
     
-    cell = table.cell(0, 0)
-    p = cell.paragraphs[0]
-    p.add_run(prepared_text).italic = True
+    sig_table_data = [
+        [Paragraph(prepared_text, style_italic), "__________________________"],
+        [Paragraph(received_text, style_italic), "__________________________"]
+    ]
     
-    cell = table.cell(0, 1)
-    cell.paragraphs[0].add_run("__________________________")
-    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    sig_table = Table(sig_table_data, colWidths=[100*mm, 70*mm])
+    sig_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('ALIGN', (1,0), (1,1), 'RIGHT'),
+    ]))
+    elements.append(sig_table)
     
-    cell = table.cell(1, 0)
-    p = cell.paragraphs[0]
-    p.add_run(received_text).italic = True
-    
-    cell = table.cell(1, 1)
-    cell.paragraphs[0].add_run("__________________________")
-    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    buffer = io.BytesIO()
-    doc.save(buffer)
+    doc.build(elements)
     buffer.seek(0)
     return buffer
 
@@ -226,7 +274,7 @@ if __name__ == "__main__":
         'amount_words': 'Pieci tūkstoši četri simti piecdesmit viens eiro 05 centi',
         'signatory': 'SIA Bratus valdes loceklis Adrians Stankevičs'
     }
-    docx_file = generate_docx(data)
-    with open("test_output.docx", "wb") as f:
-        f.write(docx_file.read())
-    print("DOCX generated.")
+    pdf = generate_pdf(data)
+    with open("test_output.pdf", "wb") as f:
+        f.write(pdf.read())
+    print("PDF generated.")
