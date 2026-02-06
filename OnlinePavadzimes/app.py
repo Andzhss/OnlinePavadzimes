@@ -29,46 +29,30 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
 # --- Google Drive Funkcijas ---
 
-def authenticate_google_drive():
-    """Veic autentifikāciju un izveido token.json"""
-    creds = None
-    # 1. Mēģinām ielādēt esošo sesiju
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-    
-    # 2. Ja nav derīgas sesijas, sākam jaunu
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-            except Exception:
-                os.remove(TOKEN_FILE)
-                creds = None
-        
-        if not creds:
-            if not os.path.exists(CREDENTIALS_FILE):
-                st.sidebar.error("❌ Trūkst `credentials.json`!")
-                return None
-            
-            # Brīdinām lietotāju PIRMS procesa sākšanas
-            st.sidebar.warning("⚠️ SKATIES TERMINĀLĪ! Nokopē saiti no melnā loga un atver to pārlūkā.")
-            
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
-            # open_browser=False nozīmē, ka saite parādīsies terminālī
-            creds = flow.run_local_server(port=0, open_browser=False)
-            
-        # Saglabājam
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(creds.to_json())
-            
-    return creds
-
 def get_drive_service():
-    """Atgriež servisu, ja ir aktīvs tokens."""
+    """Mēģina iegūt aktīvu Google Drive savienojumu."""
+    creds = None
     if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-        if creds and creds.valid:
-            return build('drive', 'v3', credentials=creds)
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+        except Exception:
+            os.remove(TOKEN_FILE)
+            creds = None
+            
+    if creds and creds.expired and creds.refresh_token:
+        try:
+            creds.refresh(Request())
+            # Saglabājam atjaunoto tokenu
+            with open(TOKEN_FILE, 'w') as token:
+                token.write(creds.to_json())
+        except Exception:
+            # Ja neizdodas atjaunot, dzēšam veco
+            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+            creds = None
+
+    if creds and creds.valid:
+        return build('drive', 'v3', credentials=creds)
+    
     return None
 
 def upload_to_drive(file_buffer, filename, mime_type):
@@ -138,7 +122,7 @@ def save_to_history(invoice_data):
 def handle_download(invoice_data, file_buffer, filename, mime_type):
     save_to_history(invoice_data)
     
-    # Pārbaudām, vai ir pieslēgums pirms augšupielādes
+    # Pārbaudām, vai ir pieslēgums
     if get_drive_service():
         with st.spinner("Augšupielādē Google Drive..."):
             success = upload_to_drive(file_buffer, filename, mime_type)
@@ -155,27 +139,54 @@ def main():
     history = load_history()
     next_number = get_next_invoice_number(history)
 
-    # --- SĀNA JOSLA (Iestatījumi + Google Drive) ---
+    # --- SĀNA JOSLA: Iestatījumi un Autorizācija ---
     st.sidebar.header("Iestatījumi")
     
-    # Google Drive Statuss
     st.sidebar.subheader("Google Drive")
-    if os.path.exists(TOKEN_FILE):
+    service = get_drive_service()
+
+    if service:
         st.sidebar.success("✅ Pieslēgts")
-        # Iespēja atslēgties, ja vajag
         if st.sidebar.button("Atslēgties"):
-            os.remove(TOKEN_FILE)
+            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
             st.rerun()
     else:
-        st.sidebar.error("❌ Nav pieslēgts")
-        if st.sidebar.button("🔌 Pieslēgties Google Drive"):
-            # Šis izsauks autentifikāciju
-            creds = authenticate_google_drive()
-            if creds:
-                st.rerun()
-    
+        st.sidebar.warning("❌ Nav pieslēgts")
+        
+        # --- MANUĀLĀ AUTORIZĀCIJA ---
+        if os.path.exists(CREDENTIALS_FILE):
+            flow = InstalledAppFlow.from_client_secrets_file(
+                CREDENTIALS_FILE, 
+                SCOPES, 
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob' # Speciāls režīms bez servera
+            )
+            
+            # 1. Ģenerējam saiti
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            
+            st.sidebar.markdown(f"**[1. Klikšķini šeit, lai autorizētos Google]({auth_url})**")
+            
+            # 2. Lauks koda ievadei
+            auth_code = st.sidebar.text_input("2. Iekopē kodu šeit:")
+            
+            if st.sidebar.button("3. Apstiprināt kodu"):
+                if auth_code:
+                    try:
+                        flow.fetch_token(code=auth_code)
+                        creds = flow.credentials
+                        with open(TOKEN_FILE, 'w') as token:
+                            token.write(creds.to_json())
+                        st.success("Veiksmīgi pieslēgts!")
+                        st.rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"Kļūda: {e}")
+                else:
+                    st.sidebar.error("Lūdzu ievadi kodu!")
+        else:
+            st.sidebar.error("Trūkst credentials.json faila!")
+
     st.sidebar.markdown("---")
-    
+
     # Dokumenta ID
     if 'doc_number_input' not in st.session_state:
         st.session_state.doc_number_input = next_number
@@ -231,6 +242,7 @@ def main():
         column_config={"CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), "DAUDZUMS": st.column_config.NumberColumn(step=1)}
     )
     
+    # Aprēķini
     subtotal = 0.0
     vat = 0.0
     total = 0.0
@@ -315,7 +327,7 @@ def main():
                 'total': fmt_curr(row.get('KOPĀ (EUR)', 0))
             })
 
-    st.markdown("### Lejupielāde")
+    st.markdown("### Lejupielāde un Arhivēšana")
     
     d_col1, d_col2 = st.columns(2)
     
