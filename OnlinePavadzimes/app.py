@@ -104,6 +104,7 @@ def main():
     total = 0.0
     amount_words = ""
     advance_payment = 0.0
+    advance_percent = 0.0 # Initialize
     
     # Helper to format currency LV style
     def fmt_curr(val):
@@ -140,14 +141,20 @@ def main():
                         value=total, 
                         step=10.0
                     )
+                    # Aprēķinam procentus priekš PDF/DOCX
+                    if total > 0:
+                        advance_percent = (advance_payment / total) * 100
+                    else:
+                        advance_percent = 0
                 else:
-                    advance_percent = st.number_input(
+                    advance_percent_input = st.number_input(
                         "Ievadiet procentus (%)", 
                         min_value=0.0, 
                         max_value=100.0, 
                         value=50.0, 
                         step=5.0
                     )
+                    advance_percent = advance_percent_input
                     # Calculate EUR from percentage of TOTAL
                     advance_payment = total * (advance_percent / 100)
                 
@@ -155,7 +162,7 @@ def main():
                 t_col1, t_col2 = st.columns([3, 1])
                 with t_col2:
                     st.markdown(f"Kopējā pasūtījuma summa: € {fmt_curr(total)}")
-                    st.markdown(f"**APMAKSĀJAMAIS AVANSS:** € {fmt_curr(advance_payment)}")
+                    st.markdown(f"**APMAKSĀJAMAIS AVANSS ({int(round(advance_percent))}%):** € {fmt_curr(advance_payment)}")
                 
                 amount_words = money_to_words_lv(advance_payment)
                 st.info(f"**Summa vārdiem (Avanss):** {amount_words}")
@@ -213,6 +220,7 @@ def main():
         'total': fmt_curr(total),
         'raw_total': total,
         'raw_advance': advance_payment,
+        'advance_percent': advance_percent, # Nododam procentus tālāk
         'amount_words': amount_words,
         'signatory': full_signatory
     }
