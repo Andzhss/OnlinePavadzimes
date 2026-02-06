@@ -84,6 +84,30 @@ def generate_pdf(data):
         leading=12
     )
     
+    # JAUNS STILS: Tabulas virsrakstiem (mazāks fonts, centrēts, balts)
+    style_table_header = ParagraphStyle(
+        'TableHeader',
+        parent=styles['Normal'],
+        fontName=BOLD_FONT,
+        fontSize=9,            # Samazināts fonts, lai ielīstu
+        alignment=TA_CENTER,   # Centrēts teksts
+        textColor=colors.white,# Balts teksts
+        leading=10             # Mazāka atstarpe starp rindām
+    )
+    
+    # Preču rindām - centrēts stils (mērvienībai un daudzumam)
+    style_cell_center = ParagraphStyle(
+        'CellCenter',
+        parent=style_normal,
+        alignment=TA_CENTER
+    )
+    # Preču rindām - labējais stils (cenām)
+    style_cell_right = ParagraphStyle(
+        'CellRight',
+        parent=style_normal,
+        alignment=TA_RIGHT
+    )
+    
     elements = []
     
     # --- Header Section ---
@@ -151,36 +175,44 @@ def generate_pdf(data):
     elements.append(Spacer(1, 10*mm))
     
     # --- Items Table ---
-    headers = ["NOSAUKUMS", "Mērvienība", "DAUDZUMS", "CENA (EUR)", "KOPĀ (EUR)"]
+    # IZMAIŅA: Virsraksti tagad ir Paragraph objekti, lai tie varētu sadalīties rindās
+    raw_headers = ["NOSAUKUMS", "Mērvienība", "DAUDZUMS", "CENA (EUR)", "KOPĀ (EUR)"]
+    headers = [Paragraph(h, style_table_header) for h in raw_headers]
     
     table_data = [headers]
     items = data.get('items', [])
     for item in items:
         table_data.append([
-            Paragraph(item['name'], style_normal),
-            item['unit'],
-            item['qty'],
-            item['price'],
-            item['total']
+            Paragraph(item['name'], style_normal),      # Nosaukums - pa kreisi
+            Paragraph(item['unit'], style_cell_center), # Mērvienība - centrēta
+            Paragraph(str(item['qty']), style_cell_center),  # Daudzums - centrēts
+            Paragraph(item['price'], style_cell_right), # Cena - pa labi
+            Paragraph(item['total'], style_cell_right)  # Kopā - pa labi
         ])
-        
-    t = Table(table_data, colWidths=[60*mm, 30*mm, 25*mm, 25*mm, 30*mm])
+    
+    # IZMAIŅA: Pielāgoti platumi. 
+    # Nosaukums: 55mm (bija 60), Mērvienība: 25mm (bija 30), 
+    # Daudzums: 30mm (bija 25), Cena: 30mm (bija 25), Kopā: 30mm.
+    t = Table(table_data, colWidths=[55*mm, 25*mm, 30*mm, 30*mm, 30*mm])
     
     header_color = colors.HexColor("#CDBF96")
     
     t.setStyle(TableStyle([
+        # Header (pirmā rinda)
         ('BACKGROUND', (0,0), (-1,0), header_color),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), BOLD_FONT),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'), 
-        ('ALIGN', (2,0), (-1,-1), 'RIGHT'),
-        ('ALIGN', (3,0), (-1,-1), 'RIGHT'),
-        ('ALIGN', (4,0), (-1,-1), 'RIGHT'),
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('FONTNAME', (0,1), (-1,-1), REGULAR_FONT),
+        # Mums vairs nevajag TEXTCOLOR vai FONTNAME šeit, jo to nosaka 'style_table_header'
+        ('VALIGN', (0,0), (-1,0), 'MIDDLE'), # Virsraksti vertikāli pa vidu
+        
+        # Pārējās rindas (saturs)
+        ('VALIGN', (0,1), (-1,-1), 'TOP'),
+        
+        # Polsterējums (Padding)
         ('BOTTOMPADDING', (0,0), (-1,-1), 6),
         ('TOPPADDING', (0,0), (-1,-1), 6),
-        # --- IZMAIŅA: Pievienotas līnijas (Grid) ---
+        ('LEFTPADDING', (0,0), (-1,-1), 4),
+        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        
+        # Grid līnijas
         ('GRID', (0,0), (-1,-1), 0.5, colors.black),
     ]))
     elements.append(t)
