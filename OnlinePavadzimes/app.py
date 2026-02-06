@@ -5,7 +5,45 @@ from pdf_generator import generate_pdf
 from docx_generator import generate_docx
 import pandas as pd
 import io
+import json
+import os
 
+# Faila nosaukums, kur glabāsim atmiņu
+SETTINGS_FILE = "settings.json"
+
+# 1. Funkcija, lai ielādētu datus (nolasa no faila)
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE, "r") as f:
+            return json.load(f)
+    return {"last_invoice_no": 49} # Noklusējuma vērtība, ja faila nav
+
+# 2. Funkcija, lai saglabātu datus (ieraksta failā)
+def save_settings(number):
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump({"last_invoice_no": number}, f)
+
+def main():
+    # Ielādējam saglabāto numuru
+    saved_settings = load_settings()
+    
+    # ... Tavs esošais kods ...
+    
+    st.sidebar.header("Iestatījumi")
+    
+    # Ievietojam saglabāto vērtību kā 'value'
+    doc_number_input = st.sidebar.number_input(
+        "Dokumenta Nr.", 
+        min_value=1, 
+        value=saved_settings["last_invoice_no"], # Ņemam no faila
+        step=1
+    )
+    
+    # Ja lietotājs nomaina numuru, mēs to uzreiz saglabājam failā
+    if doc_number_input != saved_settings["last_invoice_no"]:
+        save_settings(doc_number_input)
+        
+    # ... Tālāk viss tavs pārējais kods ...
 st.set_page_config(page_title="SIA BRATUS Invoice Generator", layout="wide")
 
 def main():
