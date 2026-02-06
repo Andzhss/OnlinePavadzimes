@@ -19,7 +19,7 @@ HISTORY_FILE = "invoice_history.json"
 CREDENTIALS_FILE = "credentials.json"  # Failam jābūt blakus app.py
 
 # !!! IELĪMĒ SAVU MAPES ID ŠEIT (no URL beigām) !!!
-GOOGLE_DRIVE_FOLDER_ID = "IELĪMĒ_SAVU_MAPES_ID_ŠEIT" 
+GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9" 
 
 # --- Google Drive Funkcija ---
 def upload_to_drive(file_buffer, filename, mime_type):
