@@ -195,11 +195,16 @@ def generate_pdf(data):
     ]
     
     totals_table = Table(totals_data, colWidths=[90*mm, 50*mm, 30*mm])
+    
+    # Noteikumi, kas mainās atkarībā no tipa
+    # Ja Avansa rēķins: "Kopējā pasūtījuma summa" NAV bold. Citādi IR bold.
+    last_row_font = REGULAR_FONT if doc_type == "Avansa rēķins" else BOLD_FONT
+    
     totals_table.setStyle(TableStyle([
         ('ALIGN', (1,0), (1,2), 'RIGHT'),
         ('ALIGN', (2,0), (2,2), 'RIGHT'),
         ('FONTNAME', (1,0), (-1,-1), REGULAR_FONT),
-        ('FONTNAME', (1,2), (2,2), BOLD_FONT),
+        ('FONTNAME', (1,2), (2,2), last_row_font), # Nosacīts fonts
     ]))
     elements.append(totals_table)
     
@@ -208,18 +213,19 @@ def generate_pdf(data):
         elements.append(Spacer(1, 5*mm))
         raw_advance = data.get('raw_advance', 0.0)
         formatted_advance = fmt_curr(raw_advance)
+        percent_val = int(round(data.get('advance_percent', 0)))
         
+        # Tikai viena rinda ar apmaksājamo avansu
         advance_data = [
-            ["", "KOPĒJĀ LĪGUMA SUMMA:", f"€ {total}"],
-            ["", "APMAKSĀJAMAIS AVANSS:", f"€ {formatted_advance}"]
+            ["", f"APMAKSĀJAMAIS AVANSS ({percent_val}% apmērā):", f"€ {formatted_advance}"]
         ]
         
         adv_table = Table(advance_data, colWidths=[60*mm, 80*mm, 30*mm])
         adv_table.setStyle(TableStyle([
-            ('ALIGN', (1,0), (2,1), 'RIGHT'),
+            ('ALIGN', (1,0), (2,0), 'RIGHT'),
             ('FONTNAME', (1,0), (-1,-1), BOLD_FONT),
             ('FONTSIZE', (1,0), (-1,-1), 11),
-            ('TEXTCOLOR', (1,1), (2,1), colors.black),
+            ('TEXTCOLOR', (1,0), (2,0), colors.black),
             ('TOPPADDING', (0,0), (-1,-1), 8),
         ]))
         elements.append(adv_table)
