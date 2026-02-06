@@ -7,6 +7,9 @@ from docx.oxml import parse_xml
 import io
 import os
 
+def fmt_curr(val):
+    return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
+
 def generate_docx(data):
     doc = Document()
     
@@ -34,17 +37,13 @@ def generate_docx(data):
     cell_logo = table.cell(0, 0)
     paragraph = cell_logo.paragraphs[0]
     
-    # 1. SOLIS: Drošs ceļš uz attēlu
     current_dir = os.path.dirname(os.path.abspath(__file__))
     logo_filename = "BRATUS MELNS LOGO PNG.png"
     logo_path = os.path.join(current_dir, logo_filename)
-    print(f"Meklēju DOCX logo šeit: {logo_path}")
 
-    # Add logo if exists
     try:
         paragraph.add_run().add_picture(logo_path, width=Cm(4))
     except Exception as e:
-        print(f"Kļūda ievietojot attēlu DOCX (Fails: {logo_filename}): {e}")
         paragraph.add_run("LOGO")
         
     # Info
@@ -138,6 +137,7 @@ def generate_docx(data):
     doc.add_paragraph()
     
     # --- Totals ---
+    # Standard 3 rows
     table = doc.add_table(rows=3, cols=3)
     table.autofit = False
     table.columns[0].width = Cm(11)
@@ -159,15 +159,48 @@ def generate_docx(data):
         p.add_run(f"€ {value}").bold = bold
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    set_total_row(0, "KOPĀ", subtotal, True)
-    set_total_row(1, "PVN", vat, True)
-    set_total_row(2, "Kopā ar PVN", total, True)
+    set_total_row(0, "KOPĀ (bez PVN)", subtotal, False)
+    set_total_row(1, "PVN (21%)", vat, False)
+    set_total_row(2, "Kopējā summa", total, True)
     
+    # --- Avansa Special Section ---
+    if doc_type == "Avansa rēķins":
+        doc.add_paragraph()
+        raw_advance = data.get('raw_advance', 0.0)
+        formatted_advance = fmt_curr(raw_advance)
+        
+        # Add table for bold totals at the bottom
+        adv_table = doc.add_table(rows=2, cols=2)
+        adv_table.autofit = False
+        adv_table.columns[0].width = Cm(13)
+        adv_table.columns[1].width = Cm(4)
+        
+        # Total Project Sum
+        c1 = adv_table.cell(0, 0)
+        c2 = adv_table.cell(0, 1)
+        p1 = c1.paragraphs[0]
+        p1.add_run("KOPĒJĀ LĪGUMA SUMMA:").bold = True
+        p1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p2 = c2.paragraphs[0]
+        p2.add_run(f"€ {total}").bold = True
+        p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        
+        # Advance To Pay
+        c3 = adv_table.cell(1, 0)
+        c4 = adv_table.cell(1, 1)
+        p3 = c3.paragraphs[0]
+        p3.add_run("APMAKSĀJAMAIS AVANSS:").bold = True
+        p3.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p4 = c4.paragraphs[0]
+        p4.add_run(f"€ {formatted_advance}").bold = True
+        p4.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
     doc.add_paragraph()
     
     # Amount words
     p = doc.add_paragraph()
-    p.add_run(f"Summa vārdiem: {data.get('amount_words', '')}").italic = True
+    prefix = "Summa vārdiem (avanss): " if doc_type == "Avansa rēķins" else "Summa vārdiem: "
+    p.add_run(f"{prefix}{data.get('amount_words', '')}").italic = True
     
     doc.add_paragraph()
     doc.add_paragraph().add_run("Papildus informācija:").bold = True
@@ -179,6 +212,9 @@ def generate_docx(data):
     if doc_type == "Pavadzīme":
         prepared_text = f"Pavadzīmi sagatavoja: {signatory}"
         received_text = "Pavadzīmi saņēma:"
+    elif doc_type == "Avansa rēķins":
+        prepared_text = f"Avansa rēķinu sagatavoja: {signatory}"
+        received_text = "Avansa rēķinu saņēma:"
     else:
         prepared_text = f"Rēķinu sagatavoja: {signatory}"
         received_text = "Rēķinu saņēma:"
@@ -208,9 +244,3 @@ def generate_docx(data):
     doc.save(buffer)
     buffer.seek(0)
     return buffer
-
-if __name__ == "__main__":
-    # Test
-    data = {'doc_type': 'Test', 'doc_id': '001'} 
-    docx_file = generate_docx(data)
-    print("DOCX generated.")
