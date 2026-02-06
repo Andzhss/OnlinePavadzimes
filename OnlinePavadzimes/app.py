@@ -3,17 +3,61 @@ import datetime
 import pandas as pd
 import json
 import os
+import io
 from utils import scrape_lursoft, money_to_words_lv
 from pdf_generator import generate_pdf
 from docx_generator import generate_docx
 
+# --- Google Drive Bibliotēkas ---
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+
 # --- Konfigurācija ---
 st.set_page_config(page_title="SIA BRATUS Invoice Generator", layout="wide")
 HISTORY_FILE = "invoice_history.json"
+CREDENTIALS_FILE = "credentials.json"  # Failam jābūt blakus app.py
+
+# !!! IELĪMĒ SAVU MAPES ID ŠEIT (no URL beigām) !!!
+GOOGLE_DRIVE_FOLDER_ID = "IELĪMĒ_SAVU_MAPES_ID_ŠEIT" 
+
+# --- Google Drive Funkcija ---
+def upload_to_drive(file_buffer, filename, mime_type):
+    """Augšupielādē failu Google Drive norādītajā mapē."""
+    try:
+        if not os.path.exists(CREDENTIALS_FILE):
+            st.error(f"⚠️ Nav atrasts '{CREDENTIALS_FILE}'! Nevaru pieslēgties Google Drive.")
+            return False
+
+        # Autentifikācija
+        SCOPES = ['https://www.googleapis.com/auth/drive.file']
+        creds = service_account.Credentials.from_service_account_file(
+            CREDENTIALS_FILE, scopes=SCOPES)
+        service = build('drive', 'v3', credentials=creds)
+
+        # Faila metadati
+        file_metadata = {
+            'name': filename,
+            'parents': [GOOGLE_DRIVE_FOLDER_ID]
+        }
+
+        # Sagatavojam failu augšupielādei (reset buffer position)
+        file_buffer.seek(0)
+        media = MediaIoBaseUpload(file_buffer, mimetype=mime_type, resumable=True)
+
+        # Izpildām augšupielādi
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        
+        # Reset buffer again for user download
+        file_buffer.seek(0)
+        return True
+        
+    except Exception as e:
+        st.error(f"❌ Kļūda augšupielādējot Google Drive: {e}")
+        return False
 
 # --- Vēstures Funkcijas ---
 def load_history():
-    """Ielādē rēķinu vēsturi no JSON faila."""
     if os.path.exists(HISTORY_FILE):
         try:
             with open(HISTORY_FILE, "r", encoding='utf-8') as f:
@@ -23,156 +67,113 @@ def load_history():
     return []
 
 def get_next_invoice_number(history):
-    """Atrod nākamo brīvo rēķina numuru, balstoties uz vēsturi."""
     if not history:
-        return 49 # Sākuma vērtība, ja vēsture tukša
-    
-    # Mēģinām atrast lielāko skaitli no ID "BR XXXX"
+        return 49
     max_num = 0
     for entry in history:
         doc_id = entry.get('doc_id', '')
-        # Pieņemam formātu "BR 0049" -> ņemam pēdējo daļu
         parts = doc_id.split()
         if len(parts) > 1 and parts[-1].isdigit():
             num = int(parts[-1])
             if num > max_num:
                 max_num = num
-    
     return max_num + 1
 
 def save_to_history(invoice_data):
-    """Saglabā vai atjauno rēķina ierakstu vēsturē."""
     history = load_history()
-    
-    # Izveidojam vienkāršotu ierakstu priekš vēstures tabulas
     new_entry = {
         'doc_id': invoice_data['doc_id'],
         'date': invoice_data['date'],
         'client_name': invoice_data['client_name'],
         'doc_type': invoice_data['doc_type'],
-        'total': invoice_data.get('total', '0.00'), # String formatētā summa
+        'total': invoice_data.get('total', '0.00'),
         'created_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-    
-    # Pārbaudām, vai šāds ID jau eksistē, un atjaunojam to, nevis dublējam
     updated = False
     for i, entry in enumerate(history):
         if entry['doc_id'] == new_entry['doc_id']:
             history[i] = new_entry
             updated = True
             break
-    
     if not updated:
         history.append(new_entry)
-    
-    # Saglabājam failā
     with open(HISTORY_FILE, "w", encoding='utf-8') as f:
         json.dump(history, f, indent=4, ensure_ascii=False)
+
+# --- Galvenā Lejupielādes/Saglabāšanas loģika ---
+def handle_download(invoice_data, file_buffer, filename, mime_type):
+    # 1. Saglabājam vietējā vēsturē (JSON)
+    save_to_history(invoice_data)
+    
+    # 2. Augšupielādējam uz Google Drive
+    with st.spinner("Augšupielādē Google Drive..."):
+        success = upload_to_drive(file_buffer, filename, mime_type)
+        if success:
+            st.toast(f"✅ Saglabāts Google Drive: {filename}", icon="☁️")
+        else:
+            st.toast("⚠️ Neizdevās saglabāt Google Drive", icon="❌")
 
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
 
-    # Ielādējam vēsturi, lai zinātu nākamo numuru
     history = load_history()
     next_number = get_next_invoice_number(history)
 
-    # --- Sidebar Configuration ---
     st.sidebar.header("Iestatījumi")
     
-    # 1. Document ID (Automātiski aizpildīts ar next_number)
-    # Pievienojam key='doc_num', lai streamlit atcerētos manuālas izmaiņas sesijas laikā
     if 'doc_number_input' not in st.session_state:
         st.session_state.doc_number_input = next_number
 
     doc_number_input = st.sidebar.number_input(
-        "Dokumenta Nr.", 
-        min_value=1, 
-        value=st.session_state.doc_number_input, 
-        step=1
+        "Dokumenta Nr.", min_value=1, value=st.session_state.doc_number_input, step=1
     )
     doc_id = f"BR {doc_number_input:04d}" 
     st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
-    # 2. Date
     doc_date = st.sidebar.date_input("Datums", datetime.date.today())
     due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14))
-    
-    # 3. Document Type
     doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins", "Avansa rēķins"])
     
-    # --- Client Data ---
     st.header("Klients")
-    
     col1, col2 = st.columns([1, 1])
     
-    # Session state for client data
     if 'client_data' not in st.session_state:
-        st.session_state.client_data = {
-            'name': '',
-            'address': '',
-            'reg_no': '',
-            'vat_no': ''
-        }
+        st.session_state.client_data = {'name': '', 'address': '', 'reg_no': '', 'vat_no': ''}
         
     with col1:
-        lursoft_url = st.text_input("Lursoft saite (automātiskai datu ielasīšanai)")
+        lursoft_url = st.text_input("Lursoft saite")
         scrape_btn = st.button("Ielādēt datus no Lursoft")
-        
         if scrape_btn and lursoft_url:
             with st.spinner("Datu ielasīšana..."):
                 scraped = scrape_lursoft(lursoft_url)
                 if scraped:
-                    if scraped.get('name'):
-                        st.session_state.client_data['name'] = scraped.get('name')
-                    if scraped.get('address'):
-                        st.session_state.client_data['address'] = scraped.get('address')
-                    if scraped.get('reg_no'):
-                        st.session_state.client_data['reg_no'] = scraped.get('reg_no')
-                        st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no')
-                    
-                    st.success("Dati veiksmīgi ielasīti! Lūdzu pārbaudiet.")
+                    if scraped.get('name'): st.session_state.client_data['name'] = scraped.get('name')
+                    if scraped.get('address'): st.session_state.client_data['address'] = scraped.get('address')
+                    if scraped.get('reg_no'): st.session_state.client_data['reg_no'] = scraped.get('reg_no')
+                    st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no')
+                    st.success("Dati veiksmīgi ielasīti!")
                     st.rerun()
                 else:
-                    st.error("Neizdevās ielasīt datus. Lūdzu ievadiet manuāli.")
+                    st.error("Neizdevās ielasīt datus.")
     
     with col2:
-        client_name = st.text_input("Nosaukums", value=st.session_state.client_data['name'])
-        client_address = st.text_input("Adrese", value=st.session_state.client_data['address'])
-        client_reg_no = st.text_input("Reģ. Nr.", value=st.session_state.client_data['reg_no'])
-        client_vat_no = st.text_input("PVN Nr.", value=st.session_state.client_data['vat_no'])
-        
-        st.session_state.client_data['name'] = client_name
-        st.session_state.client_data['address'] = client_address
-        st.session_state.client_data['reg_no'] = client_reg_no
-        st.session_state.client_data['vat_no'] = client_vat_no
+        st.session_state.client_data['name'] = st.text_input("Nosaukums", value=st.session_state.client_data['name'])
+        st.session_state.client_data['address'] = st.text_input("Adrese", value=st.session_state.client_data['address'])
+        st.session_state.client_data['reg_no'] = st.text_input("Reģ. Nr.", value=st.session_state.client_data['reg_no'])
+        st.session_state.client_data['vat_no'] = st.text_input("PVN Nr.", value=st.session_state.client_data['vat_no'])
 
     st.markdown("---")
-    
-    # --- Items Table ---
     st.header("Preces / Pakalpojumi")
     
     if 'items_df' not in st.session_state:
-        initial_data = [
-            {
-                "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W",
-                "Mērvienība": "Gab.",
-                "DAUDZUMS": 1,
-                "CENA (EUR)": 4505.00
-            }
-        ]
+        initial_data = [{"NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1, "CENA (EUR)": 4505.00}]
         st.session_state.items_df = pd.DataFrame(initial_data)
         
     edited_df = st.data_editor(
-        st.session_state.items_df,
-        num_rows="dynamic",
-        use_container_width=True,
-        column_config={
-            "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"),
-            "DAUDZUMS": st.column_config.NumberColumn(step=1),
-        }
+        st.session_state.items_df, num_rows="dynamic", use_container_width=True,
+        column_config={"CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), "DAUDZUMS": st.column_config.NumberColumn(step=1)}
     )
     
-    # Calculate totals
     subtotal = 0.0
     vat = 0.0
     total = 0.0
@@ -188,65 +189,40 @@ def main():
             calc_df = edited_df.copy()
             calc_df['DAUDZUMS'] = pd.to_numeric(calc_df['DAUDZUMS'], errors='coerce').fillna(0)
             calc_df['CENA (EUR)'] = pd.to_numeric(calc_df['CENA (EUR)'], errors='coerce').fillna(0)
-            
             calc_df['KOPĀ (EUR)'] = calc_df['DAUDZUMS'] * calc_df['CENA (EUR)']
             
             subtotal = calc_df['KOPĀ (EUR)'].sum()
             vat = subtotal * 0.21
             total = subtotal + vat
             
-            # --- Avansa Invoice Logic ---
             if doc_type == "Avansa rēķins":
                 st.markdown("### Avansa iestatījumi")
-                
-                calc_method = st.radio(
-                    "Aprēķina veids:",
-                    ["Avansa rēķina apmaksājamā summa ciparos (EUR)", "Avansa rēķina apmaksājamā summa procentos (%)"],
-                    horizontal=True
-                )
+                calc_method = st.radio("Aprēķina veids:", ["Avansa rēķina apmaksājamā summa ciparos (EUR)", "Avansa rēķina apmaksājamā summa procentos (%)"], horizontal=True)
                 
                 if calc_method == "Avansa rēķina apmaksājamā summa ciparos (EUR)":
-                    advance_payment = st.number_input(
-                        "Ievadiet summu (EUR)", 
-                        min_value=0.0, 
-                        max_value=total, 
-                        value=total, 
-                        step=10.0
-                    )
+                    advance_payment = st.number_input("Summa (EUR)", 0.0, total, total, 10.0)
                     if total > 0:
                         advance_percent = (advance_payment / total) * 100
                     else:
                         advance_percent = 0
                 else:
-                    advance_percent_input = st.number_input(
-                        "Ievadiet procentus (%)", 
-                        min_value=0.0, 
-                        max_value=100.0, 
-                        value=50.0, 
-                        step=5.0
-                    )
+                    advance_percent_input = st.number_input("Procenti (%)", 0.0, 100.0, 50.0, 5.0)
                     advance_percent = advance_percent_input
                     advance_payment = total * (advance_percent / 100)
                 
-                st.markdown("### Aprēķins")
                 t_col1, t_col2 = st.columns([3, 1])
                 with t_col2:
                     st.markdown(f"Kopējā pasūtījuma summa: € {fmt_curr(total)}")
                     st.markdown(f"**APMAKSĀJAMAIS AVANSS ({int(round(advance_percent))}%):** € {fmt_curr(advance_payment)}")
-                
                 amount_words = money_to_words_lv(advance_payment)
                 st.info(f"**Summa vārdiem (Avanss):** {amount_words}")
-                
             else:
                 advance_payment = total
-                
-                st.markdown("### Aprēķins")
                 t_col1, t_col2 = st.columns([3, 1])
                 with t_col2:
                     st.markdown(f"**KOPĀ:** € {fmt_curr(subtotal)}")
                     st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
                     st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
-                
                 amount_words = money_to_words_lv(total)
                 st.info(f"**Summa vārdiem:** {amount_words}")
             
@@ -254,119 +230,84 @@ def main():
         st.error(f"Kļūda aprēķinos: {e}")
 
     st.markdown("---")
-
-    # --- Signatory ---
     st.header("Paraksti")
-    signatory_options = [
-        "Adrians Stankevičs",
-        "Rihards Ozoliņš",
-        "Ēriks Ušackis",
-        "Aleks Kristiāns Grīnbergs"
-    ]
-    
+    signatory_options = ["Adrians Stankevičs", "Rihards Ozoliņš", "Ēriks Ušackis", "Aleks Kristiāns Grīnbergs"]
     col_sig1, col_sig2 = st.columns(2)
     with col_sig1:
-        # Pievienojam key, lai atcerētos izvēli
         selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options, key="sig_select")
     with col_sig2:
         signatory_title = st.text_input("Amats", "valdes loceklis", key="sig_title")
-        
     full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
     st.caption(f"Paraksta laukā būs: {full_signatory}")
     
-    # Datu savākšana ģenerēšanai un VĒSTUREI
     invoice_data = {
-        'doc_type': doc_type,
-        'doc_id': doc_id,
-        'date': doc_date.strftime("%d.%m.%Y"),
-        'due_date': due_date.strftime("%d.%m.%Y"),
-        'client_name': st.session_state.client_data['name'],
-        'client_address': st.session_state.client_data['address'],
-        'client_reg_no': st.session_state.client_data['reg_no'],
-        'client_vat_no': st.session_state.client_data['vat_no'],
-        'items': [],
-        'subtotal': fmt_curr(subtotal),
-        'vat': fmt_curr(vat),
-        'total': fmt_curr(total),
-        'raw_total': total,
-        'raw_advance': advance_payment,
-        'advance_percent': advance_percent,
-        'amount_words': amount_words,
-        'signatory': full_signatory
+        'doc_type': doc_type, 'doc_id': doc_id, 'date': doc_date.strftime("%d.%m.%Y"),
+        'due_date': due_date.strftime("%d.%m.%Y"), 'client_name': st.session_state.client_data['name'],
+        'client_address': st.session_state.client_data['address'], 'client_reg_no': st.session_state.client_data['reg_no'],
+        'client_vat_no': st.session_state.client_data['vat_no'], 'items': [],
+        'subtotal': fmt_curr(subtotal), 'vat': fmt_curr(vat), 'total': fmt_curr(total),
+        'raw_total': total, 'raw_advance': advance_payment, 'advance_percent': advance_percent,
+        'amount_words': amount_words, 'signatory': full_signatory
     }
     
     if not edited_df.empty:
         for index, row in calc_df.iterrows():
             invoice_data['items'].append({
-                'name': row.get('NOSAUKUMS', ''),
-                'unit': row.get('Mērvienība', ''),
-                'qty': str(row.get('DAUDZUMS', 0)),
-                'price': fmt_curr(row.get('CENA (EUR)', 0)),
+                'name': row.get('NOSAUKUMS', ''), 'unit': row.get('Mērvienība', ''),
+                'qty': str(row.get('DAUDZUMS', 0)), 'price': fmt_curr(row.get('CENA (EUR)', 0)),
                 'total': fmt_curr(row.get('KOPĀ (EUR)', 0))
             })
 
-    st.markdown("### Lejupielāde")
+    st.markdown("### Lejupielāde un Arhivēšana")
+    st.caption(f"Faili tiks automātiski saglabāti tavā Google Drive mapē.")
+    
     d_col1, d_col2 = st.columns(2)
     
     # PDF
     try:
         pdf_file = generate_pdf(invoice_data)
+        file_name_pdf = f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf"
+        
         with d_col1:
-            # Pievienojam on_click=save_to_history
             st.download_button(
                 label="📄 Lejupielādēt PDF",
                 data=pdf_file,
-                file_name=f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf",
+                file_name=file_name_pdf,
                 mime="application/pdf",
-                on_click=save_to_history,
-                args=(invoice_data,)
+                on_click=handle_download,
+                args=(invoice_data, pdf_file, file_name_pdf, "application/pdf")
             )
     except Exception as e:
-        st.error(f"Kļūda ģenerējot PDF: {e}")
+        st.error(f"Kļūda PDF: {e}")
         
     # Docx
     try:
         docx_file = generate_docx(invoice_data)
+        file_name_docx = f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx"
+        
         with d_col2:
-            # Pievienojam on_click=save_to_history
             st.download_button(
                 label="📝 Lejupielādēt Word",
                 data=docx_file,
-                file_name=f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx",
+                file_name=file_name_docx,
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                on_click=save_to_history,
-                args=(invoice_data,)
+                on_click=handle_download,
+                args=(invoice_data, docx_file, file_name_docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             )
     except Exception as e:
-        st.error(f"Kļūda ģenerējot Word: {e}")
+        st.error(f"Kļūda Word: {e}")
 
-    # --- Vēstures sadaļa ---
     st.markdown("---")
-    with st.expander("🗄️ Rēķinu vēsture (Noklikšķiniet, lai atvērtu)", expanded=False):
+    with st.expander("🗄️ Rēķinu vēsture", expanded=False):
         if history:
-            # Pārveidojam par DataFrame skaistākai attēlošanai
             hist_df = pd.DataFrame(history)
-            
-            # Pārkārtojam kolonnas un nosaukumus
             display_cols = ['doc_id', 'date', 'client_name', 'doc_type', 'total', 'created_at']
-            rename_map = {
-                'doc_id': 'Nr.',
-                'date': 'Datums',
-                'client_name': 'Klients',
-                'doc_type': 'Tips',
-                'total': 'Summa (EUR)',
-                'created_at': 'Izveidots'
-            }
-            
-            # Pārbaudām, vai kolonnas eksistē (ja faila struktūra mainījusies)
+            rename_map = {'doc_id': 'Nr.', 'date': 'Datums', 'client_name': 'Klients', 
+                          'doc_type': 'Tips', 'total': 'Summa (EUR)', 'created_at': 'Izveidots'}
             valid_cols = [c for c in display_cols if c in hist_df.columns]
-            
-            st.dataframe(
-                hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), 
-                use_container_width=True
-            )
+            st.dataframe(hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), use_container_width=True)
         else:
-            st.info("Vēsture ir tukša. Lejupielādējiet pirmo rēķinu, lai tas parādītos šeit.")
+            st.info("Vēsture ir tukša.")
 
 if __name__ == "__main__":
     main()
