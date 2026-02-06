@@ -137,7 +137,6 @@ def generate_docx(data):
     doc.add_paragraph()
     
     # --- Totals ---
-    # Standard 3 rows
     table = doc.add_table(rows=3, cols=3)
     table.autofit = False
     table.columns[0].width = Cm(11)
