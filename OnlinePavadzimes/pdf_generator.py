@@ -126,11 +126,10 @@ def generate_pdf(data):
     elements.append(Spacer(1, 10*mm))
     
     # --- Sender & Bank Section ---
-    # IZMAIŅAS ŠEIT: Pievienots PIEGĀDĀTĀJS un SIA Bratus ir bold
     sender_info = [
-        Paragraph("PIEGĀDĀTĀJS", style_bold), # Jaunais virsraksts
+        Paragraph("PIEGĀDĀTĀJS", style_bold),
         Spacer(1, 2*mm),
-        Paragraph("<b>SIA Bratus</b>", style_normal), # Uzņēmuma nosaukums boldā
+        Paragraph("<b>SIA Bratus</b>", style_normal),
         Paragraph("Adrese: Ķekavas nov., Ķekava,", style_normal),
         Paragraph("Dārzenieku iela 42, LV-2123", style_normal),
         Paragraph("Reģ. Nr.: 40203628316", style_normal),
@@ -139,10 +138,6 @@ def generate_pdf(data):
     ]
     
     bank_info = [
-        # Lai bankas info būtu vienā līmenī ar SIA Bratus (jo kreisajā pusē ir virsraksts),
-        # mēs varam pievienot tukšus spacerus vai virsrakstu arī šeit, 
-        # bet parasti pietiek, ka sākums ir 'TOP' līdzinājumā.
-        # Šajā gadījumā PIEGĀDĀTĀJS būs pretī AS Swedbank, kas izskatīsies OK.
         Paragraph("<b>AS Swedbank</b>", style_normal),
         Paragraph("SWIFT/BIC: HABALV22", style_normal),
         Paragraph("Bankas konta numurs: LV64HABA0551060367591", style_normal),
@@ -185,6 +180,8 @@ def generate_pdf(data):
         ('FONTNAME', (0,1), (-1,-1), REGULAR_FONT),
         ('BOTTOMPADDING', (0,0), (-1,-1), 6),
         ('TOPPADDING', (0,0), (-1,-1), 6),
+        # --- IZMAIŅA: Pievienotas līnijas (Grid) ---
+        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
     ]))
     elements.append(t)
     elements.append(Spacer(1, 10*mm))
