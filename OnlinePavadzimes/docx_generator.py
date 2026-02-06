@@ -158,41 +158,36 @@ def generate_docx(data):
         p.add_run(f"€ {value}").bold = bold
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
+    # Loģika: Ja Avansa rēķins, tad "Kopējā summa" NAV bold.
+    is_advance_doc = (doc_type == "Avansa rēķins")
+    
     set_total_row(0, "KOPĀ (bez PVN)", subtotal, False)
     set_total_row(1, "PVN (21%)", vat, False)
-    set_total_row(2, "Kopējā summa", total, True)
+    # Ja nav avanss, tad 'True' (bold), ja avanss, tad 'False' (normal)
+    set_total_row(2, "Kopējā summa", total, not is_advance_doc)
     
     # --- Avansa Special Section ---
-    if doc_type == "Avansa rēķins":
+    if is_advance_doc:
         doc.add_paragraph()
         raw_advance = data.get('raw_advance', 0.0)
         formatted_advance = fmt_curr(raw_advance)
+        percent_val = int(round(data.get('advance_percent', 0)))
         
         # Add table for bold totals at the bottom
-        adv_table = doc.add_table(rows=2, cols=2)
+        adv_table = doc.add_table(rows=1, cols=2) # Tikai 1 rinda
         adv_table.autofit = False
         adv_table.columns[0].width = Cm(13)
         adv_table.columns[1].width = Cm(4)
         
-        # Total Project Sum
+        # Advance To Pay
         c1 = adv_table.cell(0, 0)
         c2 = adv_table.cell(0, 1)
         p1 = c1.paragraphs[0]
-        p1.add_run("KOPĒJĀ LĪGUMA SUMMA:").bold = True
+        p1.add_run(f"APMAKSĀJAMAIS AVANSS ({percent_val}% apmērā):").bold = True
         p1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         p2 = c2.paragraphs[0]
-        p2.add_run(f"€ {total}").bold = True
+        p2.add_run(f"€ {formatted_advance}").bold = True
         p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        
-        # Advance To Pay
-        c3 = adv_table.cell(1, 0)
-        c4 = adv_table.cell(1, 1)
-        p3 = c3.paragraphs[0]
-        p3.add_run("APMAKSĀJAMAIS AVANSS:").bold = True
-        p3.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p4 = c4.paragraphs[0]
-        p4.add_run(f"€ {formatted_advance}").bold = True
-        p4.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
     doc.add_paragraph()
     
