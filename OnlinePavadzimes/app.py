@@ -186,6 +186,48 @@ def main():
             st.sidebar.error("Trūkst credentials.json faila!")
 
     st.sidebar.markdown("---")
+    
+    # ==========================================
+    # JAUNS: DATU PĀRVALDĪBA (Vēstures dzēšana)
+    # ==========================================
+    st.sidebar.header("Datu pārvaldība")
+
+    # Inicializējam sesijas stāvokli apstiprinājumam, ja tas vēl nav
+    if 'confirm_delete_history' not in st.session_state:
+        st.session_state.confirm_delete_history = False
+
+    # 1. solis: Galvenā dzēšanas poga
+    if st.sidebar.button("🗑️ Dzēst visu rēķinu vēsturi"):
+        st.session_state.confirm_delete_history = True
+
+    # 2. solis: Apstiprinājuma loģika
+    if st.session_state.confirm_delete_history:
+        st.sidebar.error("Vai jūs patiešām vēlaties dzēst visu vēsturi? Šo darbību nevar atsaukt.")
+        
+        col_del_1, col_del_2 = st.sidebar.columns(2)
+        
+        # Poga "Jā"
+        if col_del_1.button("Jā, dzēst"):
+            if os.path.exists(HISTORY_FILE):
+                try:
+                    os.remove(HISTORY_FILE)
+                    st.toast("Vēsture veiksmīgi izdzēsta!", icon="✅")
+                except Exception as e:
+                    st.sidebar.error(f"Kļūda dzēšot failu: {e}")
+            else:
+                st.sidebar.warning("Vēstures fails neeksistē.")
+            
+            # Atiestatām stāvokli un pārlādējam lapu
+            st.session_state.confirm_delete_history = False
+            st.rerun()
+
+        # Poga "Atcelt"
+        if col_del_2.button("Atcelt"):
+            st.session_state.confirm_delete_history = False
+            st.rerun()
+
+    st.sidebar.markdown("---")
+    # ==========================================
 
     # Dokumenta ID
     if 'doc_number_input' not in st.session_state:
