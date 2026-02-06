@@ -86,6 +86,9 @@ def generate_docx(data):
     # Sender
     cell = table.cell(0, 0)
     p = cell.paragraphs[0]
+    # IZMAIŅAS ŠEIT:
+    p.add_run("PIEGĀDĀTĀJS").bold = True
+    p.add_run("\n")
     p.add_run("SIA Bratus").bold = True
     p.add_run("\nAdrese: Ķekavas nov., Ķekava,")
     p.add_run("\nDārzenieku iela 42, LV-2123")
@@ -158,12 +161,10 @@ def generate_docx(data):
         p.add_run(f"€ {value}").bold = bold
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    # Loģika: Ja Avansa rēķins, tad "Kopējā summa" NAV bold.
     is_advance_doc = (doc_type == "Avansa rēķins")
     
     set_total_row(0, "KOPĀ (bez PVN)", subtotal, False)
     set_total_row(1, "PVN (21%)", vat, False)
-    # Ja nav avanss, tad 'True' (bold), ja avanss, tad 'False' (normal)
     set_total_row(2, "Kopējā summa", total, not is_advance_doc)
     
     # --- Avansa Special Section ---
@@ -174,7 +175,7 @@ def generate_docx(data):
         percent_val = int(round(data.get('advance_percent', 0)))
         
         # Add table for bold totals at the bottom
-        adv_table = doc.add_table(rows=1, cols=2) # Tikai 1 rinda
+        adv_table = doc.add_table(rows=1, cols=2)
         adv_table.autofit = False
         adv_table.columns[0].width = Cm(13)
         adv_table.columns[1].width = Cm(4)
