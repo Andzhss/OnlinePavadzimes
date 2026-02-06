@@ -126,8 +126,11 @@ def generate_pdf(data):
     elements.append(Spacer(1, 10*mm))
     
     # --- Sender & Bank Section ---
+    # IZMAIŅAS ŠEIT: Pievienots PIEGĀDĀTĀJS un SIA Bratus ir bold
     sender_info = [
-        Paragraph("<b>SIA Bratus</b>", style_normal),
+        Paragraph("PIEGĀDĀTĀJS", style_bold), # Jaunais virsraksts
+        Spacer(1, 2*mm),
+        Paragraph("<b>SIA Bratus</b>", style_normal), # Uzņēmuma nosaukums boldā
         Paragraph("Adrese: Ķekavas nov., Ķekava,", style_normal),
         Paragraph("Dārzenieku iela 42, LV-2123", style_normal),
         Paragraph("Reģ. Nr.: 40203628316", style_normal),
@@ -136,6 +139,10 @@ def generate_pdf(data):
     ]
     
     bank_info = [
+        # Lai bankas info būtu vienā līmenī ar SIA Bratus (jo kreisajā pusē ir virsraksts),
+        # mēs varam pievienot tukšus spacerus vai virsrakstu arī šeit, 
+        # bet parasti pietiek, ka sākums ir 'TOP' līdzinājumā.
+        # Šajā gadījumā PIEGĀDĀTĀJS būs pretī AS Swedbank, kas izskatīsies OK.
         Paragraph("<b>AS Swedbank</b>", style_normal),
         Paragraph("SWIFT/BIC: HABALV22", style_normal),
         Paragraph("Bankas konta numurs: LV64HABA0551060367591", style_normal),
@@ -187,7 +194,6 @@ def generate_pdf(data):
     vat = data.get('vat', '0.00')
     total = data.get('total', '0.00')
     
-    # Standard breakdown
     totals_data = [
         ["", "KOPĀ (bez PVN)", f"€ {subtotal}"],
         ["", "PVN (21%)", f"€ {vat}"],
@@ -196,15 +202,13 @@ def generate_pdf(data):
     
     totals_table = Table(totals_data, colWidths=[90*mm, 50*mm, 30*mm])
     
-    # Noteikumi, kas mainās atkarībā no tipa
-    # Ja Avansa rēķins: "Kopējā pasūtījuma summa" NAV bold. Citādi IR bold.
     last_row_font = REGULAR_FONT if doc_type == "Avansa rēķins" else BOLD_FONT
     
     totals_table.setStyle(TableStyle([
         ('ALIGN', (1,0), (1,2), 'RIGHT'),
         ('ALIGN', (2,0), (2,2), 'RIGHT'),
         ('FONTNAME', (1,0), (-1,-1), REGULAR_FONT),
-        ('FONTNAME', (1,2), (2,2), last_row_font), # Nosacīts fonts
+        ('FONTNAME', (1,2), (2,2), last_row_font),
     ]))
     elements.append(totals_table)
     
@@ -215,7 +219,6 @@ def generate_pdf(data):
         formatted_advance = fmt_curr(raw_advance)
         percent_val = int(round(data.get('advance_percent', 0)))
         
-        # Tikai viena rinda ar apmaksājamo avansu
         advance_data = [
             ["", f"APMAKSĀJAMAIS AVANSS ({percent_val}% apmērā):", f"€ {formatted_advance}"]
         ]
