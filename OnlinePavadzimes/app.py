@@ -15,19 +15,16 @@ def main():
     st.sidebar.header("Iestatījumi")
     
     # 1. Document ID
-    # User inputs number.
     doc_number_input = st.sidebar.number_input("Dokumenta Nr.", min_value=1, value=49, step=1)
-    # Format as BR XXXX (4 digits based on template)
     doc_id = f"BR {doc_number_input:04d}" 
     st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
     # 2. Date
     doc_date = st.sidebar.date_input("Datums", datetime.date.today())
-    # Due date defaults to +14 days
     due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14))
     
-    # 3. Document Type
-    doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins"])
+    # 3. Document Type (Updated with Avansa rēķins)
+    doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins", "Avansa rēķins"])
     
     # --- Client Data ---
     st.header("Klients")
@@ -57,7 +54,6 @@ def main():
                         st.session_state.client_data['address'] = scraped.get('address')
                     if scraped.get('reg_no'):
                         st.session_state.client_data['reg_no'] = scraped.get('reg_no')
-                        # Try to guess VAT no (LV + RegNo)
                         st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no')
                     
                     st.success("Dati veiksmīgi ielasīti! Lūdzu pārbaudiet.")
@@ -71,7 +67,6 @@ def main():
         client_reg_no = st.text_input("Reģ. Nr.", value=st.session_state.client_data['reg_no'])
         client_vat_no = st.text_input("PVN Nr.", value=st.session_state.client_data['vat_no'])
         
-        # Sync back to session state
         st.session_state.client_data['name'] = client_name
         st.session_state.client_data['address'] = client_address
         st.session_state.client_data['reg_no'] = client_reg_no
@@ -82,9 +77,7 @@ def main():
     # --- Items Table ---
     st.header("Preces / Pakalpojumi")
     
-    # Initial data
     if 'items_df' not in st.session_state:
-        # Pre-fill based on template
         initial_data = [
             {
                 "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W",
@@ -95,7 +88,6 @@ def main():
         ]
         st.session_state.items_df = pd.DataFrame(initial_data)
         
-    # Display data editor
     edited_df = st.data_editor(
         st.session_state.items_df,
         num_rows="dynamic",
@@ -111,12 +103,15 @@ def main():
     vat = 0.0
     total = 0.0
     amount_words = ""
+    advance_payment = 0.0
     
+    # Helper to format currency LV style
+    def fmt_curr(val):
+        return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
+
     try:
         if not edited_df.empty:
-            # Create a copy for calculation
             calc_df = edited_df.copy()
-            # Ensure types
             calc_df['DAUDZUMS'] = pd.to_numeric(calc_df['DAUDZUMS'], errors='coerce').fillna(0)
             calc_df['CENA (EUR)'] = pd.to_numeric(calc_df['CENA (EUR)'], errors='coerce').fillna(0)
             
@@ -126,21 +121,43 @@ def main():
             vat = subtotal * 0.21
             total = subtotal + vat
             
-            # Helper to format currency LV style
-            def fmt_curr(val):
-                return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
-            
-            # Display Totals
-            st.markdown("### Aprēķins")
-            t_col1, t_col2 = st.columns([3, 1])
-            with t_col2:
-                st.markdown(f"**KOPĀ:** € {fmt_curr(subtotal)}")
-                st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
-                st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
-            
-            # Amount in words
-            amount_words = money_to_words_lv(total)
-            st.info(f"**Summa vārdiem:** {amount_words}")
+            # --- Advance Invoice Logic ---
+            if doc_type == "Avansa rēķins":
+                st.markdown("### Avansa iestatījumi")
+                # Default value is the full total
+                advance_payment = st.number_input(
+                    "Avansa rēķina apmaksājamā summa (EUR)", 
+                    min_value=0.0, 
+                    max_value=total, 
+                    value=total, 
+                    step=10.0,
+                    help="Norādiet summu, kas jāmaksā kā avanss. Ja jāmaksā pilna summa, atstājiet kā ir."
+                )
+                
+                st.markdown("### Aprēķins")
+                t_col1, t_col2 = st.columns([3, 1])
+                with t_col2:
+                    st.markdown(f"Kopējā pasūtījuma summa: € {fmt_curr(total)}")
+                    st.markdown(f"**APMAKSĀJAMAIS AVANSS:** € {fmt_curr(advance_payment)}")
+                
+                # Words for the ADVANCE amount
+                amount_words = money_to_words_lv(advance_payment)
+                st.info(f"**Summa vārdiem (Avanss):** {amount_words}")
+                
+            else:
+                # Standard Invoice/Pavadzīme
+                advance_payment = total # Use full total
+                
+                st.markdown("### Aprēķins")
+                t_col1, t_col2 = st.columns([3, 1])
+                with t_col2:
+                    st.markdown(f"**KOPĀ:** € {fmt_curr(subtotal)}")
+                    st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
+                    st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
+                
+                # Words for the FULL amount
+                amount_words = money_to_words_lv(total)
+                st.info(f"**Summa vārdiem:** {amount_words}")
             
     except Exception as e:
         st.error(f"Kļūda aprēķinos: {e}")
@@ -160,7 +177,6 @@ def main():
     with col_sig1:
         selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options)
     with col_sig2:
-        # Default title based on template
         signatory_title = st.text_input("Amats", "valdes loceklis")
         
     full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
@@ -177,22 +193,25 @@ def main():
         'client_reg_no': st.session_state.client_data['reg_no'],
         'client_vat_no': st.session_state.client_data['vat_no'],
         'items': [],
-        'subtotal': f"{subtotal:,.2f}".replace(",", "X").replace(".", ",").replace("X", " "),
-        'vat': f"{vat:,.2f}".replace(",", "X").replace(".", ",").replace("X", " "),
-        'total': f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", " "),
+        # Formatted strings for standard display
+        'subtotal': fmt_curr(subtotal),
+        'vat': fmt_curr(vat),
+        'total': fmt_curr(total),
+        # Raw values for custom logic in generators
+        'raw_total': total,
+        'raw_advance': advance_payment,
         'amount_words': amount_words,
         'signatory': full_signatory
     }
     
-    # Populate items list
     if not edited_df.empty:
         for index, row in calc_df.iterrows():
             invoice_data['items'].append({
                 'name': row.get('NOSAUKUMS', ''),
                 'unit': row.get('Mērvienība', ''),
                 'qty': str(row.get('DAUDZUMS', 0)),
-                'price': f"{row.get('CENA (EUR)', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", " "),
-                'total': f"{row.get('KOPĀ (EUR)', 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
+                'price': fmt_curr(row.get('CENA (EUR)', 0)),
+                'total': fmt_curr(row.get('KOPĀ (EUR)', 0))
             })
 
     st.markdown("### Lejupielāde")
@@ -205,7 +224,7 @@ def main():
             st.download_button(
                 label="📄 Lejupielādēt PDF",
                 data=pdf_file,
-                file_name=f"{doc_type}_{doc_id}.pdf",
+                file_name=f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf",
                 mime="application/pdf"
             )
     except Exception as e:
@@ -218,7 +237,7 @@ def main():
             st.download_button(
                 label="📝 Lejupielādēt Word",
                 data=docx_file,
-                file_name=f"{doc_type}_{doc_id}.docx",
+                file_name=f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
     except Exception as e:
