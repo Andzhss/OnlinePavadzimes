@@ -187,7 +187,7 @@ def generate_pdf(data):
     vat = data.get('vat', '0.00')
     total = data.get('total', '0.00')
     
-    # Standard breakdown (Always shown)
+    # Standard breakdown
     totals_data = [
         ["", "KOPĀ (bez PVN)", f"€ {subtotal}"],
         ["", "PVN (21%)", f"€ {vat}"],
@@ -199,7 +199,7 @@ def generate_pdf(data):
         ('ALIGN', (1,0), (1,2), 'RIGHT'),
         ('ALIGN', (2,0), (2,2), 'RIGHT'),
         ('FONTNAME', (1,0), (-1,-1), REGULAR_FONT),
-        ('FONTNAME', (1,2), (2,2), BOLD_FONT), # Bold "Kopējā pasūtījuma summa"
+        ('FONTNAME', (1,2), (2,2), BOLD_FONT),
     ]))
     elements.append(totals_table)
     
@@ -208,9 +208,6 @@ def generate_pdf(data):
         elements.append(Spacer(1, 5*mm))
         raw_advance = data.get('raw_advance', 0.0)
         formatted_advance = fmt_curr(raw_advance)
-        
-        # Lielie burti priekš kopējās summas un apmaksājamā avansa
-        # Mēs parādām gan pilno summu, gan avansu, lai būtu skaidrs
         
         advance_data = [
             ["", "KOPĒJĀ LĪGUMA SUMMA:", f"€ {total}"],
@@ -222,7 +219,7 @@ def generate_pdf(data):
             ('ALIGN', (1,0), (2,1), 'RIGHT'),
             ('FONTNAME', (1,0), (-1,-1), BOLD_FONT),
             ('FONTSIZE', (1,0), (-1,-1), 11),
-            ('TEXTCOLOR', (1,1), (2,1), colors.black), # Avansa rinda
+            ('TEXTCOLOR', (1,1), (2,1), colors.black),
             ('TOPPADDING', (0,0), (-1,-1), 8),
         ]))
         elements.append(adv_table)
