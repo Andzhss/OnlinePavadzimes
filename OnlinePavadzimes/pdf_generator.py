@@ -9,8 +9,8 @@ from reportlab.lib.enums import TA_RIGHT, TA_LEFT, TA_CENTER
 import io
 import os
 
-# --- Krāsu definīcijas (no attēla) ---
-THEME_COLOR = colors.HexColor("#CDBF96") # Bēšs/Zelts tonis
+# --- Krāsu definīcijas ---
+THEME_COLOR = colors.HexColor("#CDBF96")
 TEXT_COLOR = colors.black
 
 # --- Fontu iestatījumi ---
@@ -56,7 +56,6 @@ def fmt_curr(val):
 
 def generate_pdf(data):
     buffer = io.BytesIO()
-    # A4 platums ir 210mm. Ar 20mm malām paliek 170mm darba zona.
     doc = SimpleDocTemplate(buffer, pagesize=A4,
                             rightMargin=20*mm, leftMargin=20*mm,
                             topMargin=15*mm, bottomMargin=15*mm)
@@ -89,7 +88,6 @@ def generate_pdf(data):
         textColor=TEXT_COLOR
     )
     
-    # Galvene (Header) labajā pusē
     style_header_title = ParagraphStyle(
         'HeaderTitle',
         parent=styles['Normal'],
@@ -109,7 +107,6 @@ def generate_pdf(data):
         textColor=TEXT_COLOR
     )
 
-    # Tabulas virsraksti (balti, centrēti)
     style_table_header = ParagraphStyle(
         'TableHeader',
         parent=styles['Normal'],
@@ -120,7 +117,6 @@ def generate_pdf(data):
         leading=11
     )
     
-    # Šūnu stili
     style_cell_left = ParagraphStyle('CellLeft', parent=style_normal, alignment=TA_LEFT)
     style_cell_center = ParagraphStyle('CellCenter', parent=style_normal, alignment=TA_CENTER)
     style_cell_right = ParagraphStyle('CellRight', parent=style_normal, alignment=TA_RIGHT)
@@ -144,7 +140,6 @@ def generate_pdf(data):
     date = data.get('date', '')
     due_date = data.get('due_date', '')
     
-    # Labā puse
     header_text = [
         Paragraph(f"{doc_type} Nr. {doc_id}", style_header_title),
         Spacer(1, 2*mm),
@@ -152,7 +147,6 @@ def generate_pdf(data):
         Paragraph(f"Apmaksāt līdz: {due_date}", style_header_info),
     ]
     
-    # Tabula: Logo pa kreisi, Info pa labi
     header_table = Table([[logo, header_text]], colWidths=[85*mm, 85*mm])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -163,7 +157,7 @@ def generate_pdf(data):
     ]))
     elements.append(header_table)
     elements.append(Spacer(1, 3*mm))
-    elements.append(HorizontalLine()) # Līnija
+    elements.append(HorizontalLine()) 
     elements.append(Spacer(1, 5*mm))
     
     # ==========================================
@@ -172,21 +166,18 @@ def generate_pdf(data):
     elements.append(Paragraph("KLIENTS", style_bold))
     elements.append(Spacer(1, 2*mm))
     
-    # Klients bold, adrese italic (kā paraugā)
     elements.append(Paragraph(f"<b>{data.get('client_name', '')}</b>", style_normal))
     elements.append(Paragraph(f"<i>Adrese: {data.get('client_address', '')}</i>", style_normal))
     elements.append(Paragraph(f"<i>Reģ. Nr.: {data.get('client_reg_no', '')}</i>", style_normal))
     elements.append(Paragraph(f"<i>PVN Nr.: {data.get('client_vat_no', '')}</i>", style_normal))
     
     elements.append(Spacer(1, 3*mm))
-    elements.append(HorizontalLine(thickness=0.2)) # Plānāka līnija
+    elements.append(HorizontalLine(thickness=0.2))
     elements.append(Spacer(1, 5*mm))
     
     # ==========================================
     # 3. PIEGĀDĀTĀJS UN BANKA
     # ==========================================
-    # Veidojam kā tabulu divās kolonnās
-    
     sender_data = [
         Paragraph("<b>SIA Bratus</b>", style_normal),
         Paragraph(f"<i>Adrese: Ķekavas nov., Ķekava,</i>", style_normal),
@@ -214,8 +205,6 @@ def generate_pdf(data):
     # ==========================================
     # 4. PREČU TABULA
     # ==========================================
-    
-    # Virsraksti (Paragraph, lai ietilptu un centrētos)
     headers = [
         Paragraph("NOSAUKUMS", style_table_header),
         Paragraph("Mērvienība", style_table_header),
@@ -227,7 +216,6 @@ def generate_pdf(data):
     table_data = [headers]
     items = data.get('items', [])
     
-    # Ja nav preču, pievienojam tukšas rindas vizuālajam izskatam (kā paraugā)
     if not items:
         for _ in range(3):
             items.append({'name': '', 'unit': '', 'qty': '', 'price': '', 'total': ''})
@@ -241,26 +229,16 @@ def generate_pdf(data):
             Paragraph(item['total'], style_cell_right)
         ])
         
-    # Kolonnu platumi (pielāgoti lai kopā ~170mm)
     col_widths = [65*mm, 25*mm, 25*mm, 25*mm, 30*mm]
     
     t = Table(table_data, colWidths=col_widths)
     
     t.setStyle(TableStyle([
-        # --- GALVENES STILS ---
-        ('BACKGROUND', (0,0), (-1,0), THEME_COLOR), # Bēšs fons
-        ('VALIGN', (0,0), (-1,0), 'MIDDLE'),        # Centrēts vertikāli
-        
-        # Baltas vertikālās līnijas galvenē
+        ('BACKGROUND', (0,0), (-1,0), THEME_COLOR),
+        ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
         ('LINEBEFORE', (1,0), (-1,0), 1, colors.white), 
-        
-        # --- SATURA STILS ---
-        ('VALIGN', (0,1), (-1,-1), 'TOP'), # Saturs pie augšas
-        
-        # Bēšas līnijas visam saturam (režģis)
+        ('VALIGN', (0,1), (-1,-1), 'TOP'),
         ('GRID', (0,0), (-1,-1), 0.5, THEME_COLOR),
-        
-        # Polsterējums
         ('TOPPADDING', (0,0), (-1,-1), 6),
         ('BOTTOMPADDING', (0,0), (-1,-1), 6),
         ('LEFTPADDING', (0,0), (-1,-1), 5),
@@ -283,18 +261,28 @@ def generate_pdf(data):
         ["", "Kopumā", f"{total} €"]
     ]
     
-    # Pielāgojam platumus, lai sakristu ar augšējo tabulu
-    # Pēdējās 3 kolonnas augšā bija: 25 + 25 + 30 = 80mm
-    # Te mums vajag 2 kolonnas beigās.
     totals_table = Table(totals_data, colWidths=[90*mm, 50*mm, 30*mm])
     
-    totals_table.setStyle(TableStyle([
-        ('ALIGN', (1,0), (-1,-1), 'RIGHT'), # Visu centrēt pa labi
-        ('FONTNAME', (1,0), (1,2), BOLD_FONT), # Nosaukumi Bold
-        ('FONTNAME', (2,0), (2,2), REGULAR_FONT), # Skaitļi Regular
-        ('FONTNAME', (1,2), (2,2), BOLD_FONT), # Pēdējā rinda (Kopumā) Bold
-        ('TEXTCOLOR', (0,0), (-1,-1), TEXT_COLOR),
-    ]))
+    # IZMAIŅA: Loģika Avansa rēķinam pret citiem
+    if doc_type == "Avansa rēķins":
+        # Avansa rēķinam - Viss REGULAR (ne-bold)
+        totals_style_cmds = [
+            ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
+            ('TEXTCOLOR', (0,0), (-1,-1), TEXT_COLOR),
+            ('FONTNAME', (0,0), (-1,-1), REGULAR_FONT), # Viss Regular
+        ]
+    else:
+        # Pavadzīmei/Rēķinam - Kā iepriekš (virsraksti Bold, summas Regular/Bold)
+        totals_style_cmds = [
+            ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
+            ('TEXTCOLOR', (0,0), (-1,-1), TEXT_COLOR),
+            ('FONTNAME', (1,0), (1,2), BOLD_FONT),    # Labels Bold
+            ('FONTNAME', (2,0), (2,2), REGULAR_FONT), # Values Regular
+            ('FONTNAME', (1,2), (2,2), BOLD_FONT),    # Total Label Bold
+            ('FONTNAME', (2,2), (2,2), BOLD_FONT),    # Total Value Bold
+        ]
+    
+    totals_table.setStyle(TableStyle(totals_style_cmds))
     elements.append(totals_table)
     
     # ==========================================
@@ -308,12 +296,12 @@ def generate_pdf(data):
         formatted_advance = fmt_curr(raw_advance)
         percent_val = int(round(data.get('advance_percent', 0)))
         
+        # IZMAIŅA: Šis teksts BOLD
         elements.append(Paragraph(f"<b>APMAKSĀJAMAIS AVANSS ({percent_val}%): {formatted_advance} €</b>", style_cell_right))
         elements.append(Spacer(1, 2*mm))
 
     amount_words = data.get('amount_words', '')
     prefix = "Vārdiem: "
-    # Kursīvā, pa labi
     elements.append(Paragraph(f"<i>{prefix}{amount_words}</i>", 
                               ParagraphStyle('Words', parent=style_italic, alignment=TA_RIGHT)))
     
@@ -336,7 +324,6 @@ def generate_pdf(data):
         prepared_text = f"Rēķinu sagatavoja: <i>{signatory}</i>"
         received_text = "Rēķinu saņēma:"
     
-    # Parakstu līnijas
     sig_table_data = [
         [Paragraph(prepared_text, style_italic), "__________________________"],
         [Paragraph(received_text, style_italic), "__________________________"]
@@ -346,7 +333,7 @@ def generate_pdf(data):
     sig_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'BOTTOM'),
         ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-        ('ALIGN', (1,0), (1,1), 'RIGHT'), # Līnijas pa labi
+        ('ALIGN', (1,0), (1,1), 'RIGHT'),
     ]))
     elements.append(sig_table)
     
