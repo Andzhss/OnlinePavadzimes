@@ -263,7 +263,6 @@ def generate_pdf(data):
     
     totals_table = Table(totals_data, colWidths=[90*mm, 50*mm, 30*mm])
     
-    # IZMAIŅA: Loģika Avansa rēķinam pret citiem
     if doc_type == "Avansa rēķins":
         # Avansa rēķinam - Viss REGULAR (ne-bold)
         totals_style_cmds = [
@@ -272,7 +271,7 @@ def generate_pdf(data):
             ('FONTNAME', (0,0), (-1,-1), REGULAR_FONT), # Viss Regular
         ]
     else:
-        # Pavadzīmei/Rēķinam - Kā iepriekš (virsraksti Bold, summas Regular/Bold)
+        # Pavadzīmei/Rēķinam - Virsraksti un beigas Bold
         totals_style_cmds = [
             ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
             ('TEXTCOLOR', (0,0), (-1,-1), TEXT_COLOR),
@@ -296,8 +295,9 @@ def generate_pdf(data):
         formatted_advance = fmt_curr(raw_advance)
         percent_val = int(round(data.get('advance_percent', 0)))
         
-        # IZMAIŅA: Šis teksts BOLD
-        elements.append(Paragraph(f"<b>APMAKSĀJAMAIS AVANSS ({percent_val}%): {formatted_advance} €</b>", style_cell_right))
+        # IZMAIŅA: Izmantojam tiešu <font name=...> norādi, lai garantētu treknrakstu
+        bold_text = f'<font name="{BOLD_FONT}">APMAKSĀJAMAIS AVANSS ({percent_val}%): {formatted_advance} €</font>'
+        elements.append(Paragraph(bold_text, style_cell_right))
         elements.append(Spacer(1, 2*mm))
 
     amount_words = data.get('amount_words', '')
