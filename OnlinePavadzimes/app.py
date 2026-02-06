@@ -4,51 +4,83 @@ import pandas as pd
 import json
 import os
 import io
+
+# --- Google Bibliotēkas ---
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+
 from utils import scrape_lursoft, money_to_words_lv
 from pdf_generator import generate_pdf
 from docx_generator import generate_docx
 
-# --- Google Drive Bibliotēkas ---
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
-
 # --- Konfigurācija ---
 st.set_page_config(page_title="SIA BRATUS Invoice Generator", layout="wide")
 HISTORY_FILE = "invoice_history.json"
-CREDENTIALS_FILE = "credentials.json"  # Failam jābūt blakus app.py
+CREDENTIALS_FILE = "credentials.json"
+TOKEN_FILE = "token.json"  # Šeit glabāsies tava pieslēgšanās sesija
 
 # !!! IELĪMĒ SAVU MAPES ID ŠEIT (no URL beigām) !!!
 GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9" 
 
-# --- Google Drive Funkcija ---
+# Ja piekļuves līmenis (scopes) mainās, token.json būs jāizdzēš
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+# --- Google Drive Funkcija (OAuth) ---
+def get_drive_service():
+    """Autentifikācija un servisa izveide."""
+    creds = None
+    # 1. Mēģinām ielādēt saglabāto sesiju
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    
+    # 2. Ja nav sesijas vai tā beigusies, prasām ielogoties
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            try:
+                creds.refresh(Request())
+            except Exception:
+                # Ja nevar atjaunot (piem., tokens anulēts), dzēšam un prasām no jauna
+                os.remove(TOKEN_FILE)
+                creds = None
+        
+        if not creds:
+            if not os.path.exists(CREDENTIALS_FILE):
+                st.error("⚠️ Trūkst `credentials.json` faila! (OAuth Client ID)")
+                return None
+                
+            # Šis atvērs pārlūku uz servera (tava datora)
+            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)
+            creds = flow.run_local_server(port=0)
+            
+        # 3. Saglabājam sesiju nākotnei
+        with open(TOKEN_FILE, 'w') as token:
+            token.write(creds.to_json())
+
+    return build('drive', 'v3', credentials=creds)
+
 def upload_to_drive(file_buffer, filename, mime_type):
-    """Augšupielādē failu Google Drive norādītajā mapē."""
+    """Augšupielāde izmantojot OAuth."""
     try:
-        if not os.path.exists(CREDENTIALS_FILE):
-            st.error(f"⚠️ Nav atrasts '{CREDENTIALS_FILE}'! Nevaru pieslēgties Google Drive.")
+        service = get_drive_service()
+        if not service:
             return False
 
-        # Autentifikācija
-        SCOPES = ['https://www.googleapis.com/auth/drive.file']
-        creds = service_account.Credentials.from_service_account_file(
-            CREDENTIALS_FILE, scopes=SCOPES)
-        service = build('drive', 'v3', credentials=creds)
-
-        # Faila metadati
         file_metadata = {
             'name': filename,
             'parents': [GOOGLE_DRIVE_FOLDER_ID]
         }
 
-        # Sagatavojam failu augšupielādei (reset buffer position)
+        # Reset buffer
         file_buffer.seek(0)
         media = MediaIoBaseUpload(file_buffer, mimetype=mime_type, resumable=True)
 
-        # Izpildām augšupielādi
-        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        # Izpilde
+        service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         
-        # Reset buffer again for user download
+        # Reset buffer again for download button
         file_buffer.seek(0)
         return True
         
@@ -100,18 +132,21 @@ def save_to_history(invoice_data):
     with open(HISTORY_FILE, "w", encoding='utf-8') as f:
         json.dump(history, f, indent=4, ensure_ascii=False)
 
-# --- Galvenā Lejupielādes/Saglabāšanas loģika ---
 def handle_download(invoice_data, file_buffer, filename, mime_type):
-    # 1. Saglabājam vietējā vēsturē (JSON)
+    # 1. Saglabājam vietējā vēsturē
     save_to_history(invoice_data)
     
     # 2. Augšupielādējam uz Google Drive
-    with st.spinner("Augšupielādē Google Drive..."):
-        success = upload_to_drive(file_buffer, filename, mime_type)
-        if success:
-            st.toast(f"✅ Saglabāts Google Drive: {filename}", icon="☁️")
-        else:
-            st.toast("⚠️ Neizdevās saglabāt Google Drive", icon="❌")
+    # Mēs izmantojam st.spinner, lai parādītu procesu
+    # Piezīme: Streamlit callbacks nevar viegli izmantot UI elementus, 
+    # bet spinner un toast parasti strādā.
+    print(f"Sāku augšupielādi: {filename}") # Redzēsi terminālī
+    success = upload_to_drive(file_buffer, filename, mime_type)
+    
+    if success:
+        st.toast(f"✅ Saglabāts Google Drive: {filename}", icon="☁️")
+    else:
+        st.toast("⚠️ Neizdevās saglabāt Google Drive", icon="❌")
 
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
@@ -119,6 +154,7 @@ def main():
     history = load_history()
     next_number = get_next_invoice_number(history)
 
+    # --- Sāna josla ---
     st.sidebar.header("Iestatījumi")
     
     if 'doc_number_input' not in st.session_state:
@@ -134,6 +170,7 @@ def main():
     due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14))
     doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins", "Avansa rēķins"])
     
+    # --- Klienta dati ---
     st.header("Klients")
     col1, col2 = st.columns([1, 1])
     
@@ -163,6 +200,8 @@ def main():
         st.session_state.client_data['vat_no'] = st.text_input("PVN Nr.", value=st.session_state.client_data['vat_no'])
 
     st.markdown("---")
+    
+    # --- Preces ---
     st.header("Preces / Pakalpojumi")
     
     if 'items_df' not in st.session_state:
@@ -174,6 +213,7 @@ def main():
         column_config={"CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), "DAUDZUMS": st.column_config.NumberColumn(step=1)}
     )
     
+    # Aprēķini
     subtotal = 0.0
     vat = 0.0
     total = 0.0
@@ -230,6 +270,8 @@ def main():
         st.error(f"Kļūda aprēķinos: {e}")
 
     st.markdown("---")
+    
+    # --- Paraksti ---
     st.header("Paraksti")
     signatory_options = ["Adrians Stankevičs", "Rihards Ozoliņš", "Ēriks Ušackis", "Aleks Kristiāns Grīnbergs"]
     col_sig1, col_sig2 = st.columns(2)
@@ -240,6 +282,7 @@ def main():
     full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
     st.caption(f"Paraksta laukā būs: {full_signatory}")
     
+    # Datu sagatavošana
     invoice_data = {
         'doc_type': doc_type, 'doc_id': doc_id, 'date': doc_date.strftime("%d.%m.%Y"),
         'due_date': due_date.strftime("%d.%m.%Y"), 'client_name': st.session_state.client_data['name'],
@@ -258,8 +301,9 @@ def main():
                 'total': fmt_curr(row.get('KOPĀ (EUR)', 0))
             })
 
+    # --- LEJUPIELĀDE ---
     st.markdown("### Lejupielāde un Arhivēšana")
-    st.caption(f"Faili tiks automātiski saglabāti tavā Google Drive mapē.")
+    st.caption("Pirmajā reizē atvērsies pārlūks, lai apstiprinātu piekļuvi Google Drive.")
     
     d_col1, d_col2 = st.columns(2)
     
@@ -297,6 +341,7 @@ def main():
     except Exception as e:
         st.error(f"Kļūda Word: {e}")
 
+    # --- Vēsture ---
     st.markdown("---")
     with st.expander("🗄️ Rēķinu vēsture", expanded=False):
         if history:
