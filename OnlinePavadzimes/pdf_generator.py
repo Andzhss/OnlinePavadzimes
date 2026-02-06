@@ -34,6 +34,9 @@ else:
     BOLD_FONT = 'Helvetica-Bold'
     ITALIC_FONT = 'Helvetica-Oblique'
 
+def fmt_curr(val):
+    return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
+
 def generate_pdf(data):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4,
@@ -84,20 +87,13 @@ def generate_pdf(data):
     elements = []
     
     # --- Header Section ---
-    
-    # 1. SOLIS: Nosakām precīzu ceļu uz attēlu
-    # Tas atrod skripta atrašanās vietu un meklē failu turpat
     current_dir = os.path.dirname(os.path.abspath(__file__))
     logo_filename = "BRATUS MELNS LOGO PNG.png"
     logo_path = os.path.join(current_dir, logo_filename)
     
-    # Debugs: izdrukājam konsolē, kur skripts meklē failu
-    print(f"Meklēju PDF logo šeit: {logo_path}")
-
     if os.path.exists(logo_path):
         logo = RLImage(logo_path, width=40*mm, height=30*mm, kind='proportional') 
     else:
-        print(f"KĻŪDA: Logo fails '{logo_filename}' netika atrasts mapē '{current_dir}'!")
         logo = Paragraph("LOGO", style_bold)
     
     doc_type = data.get('doc_type', 'Pavadzīme')
@@ -155,8 +151,6 @@ def generate_pdf(data):
     # --- Items Table ---
     headers = ["NOSAUKUMS", "Mērvienība", "DAUDZUMS", "CENA (EUR)", "KOPĀ (EUR)"]
     
-    # Header style implicitly handled by table style below
-    
     table_data = [headers]
     items = data.get('items', [])
     for item in items:
@@ -193,25 +187,52 @@ def generate_pdf(data):
     vat = data.get('vat', '0.00')
     total = data.get('total', '0.00')
     
+    # Standard breakdown (Always shown)
     totals_data = [
-        ["", "KOPĀ", f"€ {subtotal}"],
-        ["", "PVN", f"€ {vat}"],
-        ["", "Kopā ar PVN", f"€ {total}"]
+        ["", "KOPĀ (bez PVN)", f"€ {subtotal}"],
+        ["", "PVN (21%)", f"€ {vat}"],
+        ["", "Kopējā pasūtījuma summa", f"€ {total}"]
     ]
     
-    totals_table = Table(totals_data, colWidths=[110*mm, 30*mm, 30*mm])
+    totals_table = Table(totals_data, colWidths=[90*mm, 50*mm, 30*mm])
     totals_table.setStyle(TableStyle([
         ('ALIGN', (1,0), (1,2), 'RIGHT'),
         ('ALIGN', (2,0), (2,2), 'RIGHT'),
-        ('FONTNAME', (1,0), (-1,-1), BOLD_FONT),
-        ('FONTNAME', (2,0), (-1,-1), BOLD_FONT),
+        ('FONTNAME', (1,0), (-1,-1), REGULAR_FONT),
+        ('FONTNAME', (1,2), (2,2), BOLD_FONT), # Bold "Kopējā pasūtījuma summa"
     ]))
     elements.append(totals_table)
+    
+    # --- Avansa Rēķina Papildus Sadaļa ---
+    if doc_type == "Avansa rēķins":
+        elements.append(Spacer(1, 5*mm))
+        raw_advance = data.get('raw_advance', 0.0)
+        formatted_advance = fmt_curr(raw_advance)
+        
+        # Lielie burti priekš kopējās summas un apmaksājamā avansa
+        # Mēs parādām gan pilno summu, gan avansu, lai būtu skaidrs
+        
+        advance_data = [
+            ["", "KOPĒJĀ LĪGUMA SUMMA:", f"€ {total}"],
+            ["", "APMAKSĀJAMAIS AVANSS:", f"€ {formatted_advance}"]
+        ]
+        
+        adv_table = Table(advance_data, colWidths=[60*mm, 80*mm, 30*mm])
+        adv_table.setStyle(TableStyle([
+            ('ALIGN', (1,0), (2,1), 'RIGHT'),
+            ('FONTNAME', (1,0), (-1,-1), BOLD_FONT),
+            ('FONTSIZE', (1,0), (-1,-1), 11),
+            ('TEXTCOLOR', (1,1), (2,1), colors.black), # Avansa rinda
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+        ]))
+        elements.append(adv_table)
+
     elements.append(Spacer(1, 5*mm))
     
     # Amount words
     amount_words = data.get('amount_words', '')
-    elements.append(Paragraph(f"<i>Summa vārdiem: {amount_words}</i>", style_italic))
+    prefix = "Summa vārdiem (avanss): " if doc_type == "Avansa rēķins" else "Summa vārdiem: "
+    elements.append(Paragraph(f"<i>{prefix}{amount_words}</i>", style_italic))
     elements.append(Spacer(1, 10*mm))
     
     # --- Footer / Signatures ---
@@ -223,6 +244,9 @@ def generate_pdf(data):
     if doc_type == "Pavadzīme":
         prepared_text = f"Pavadzīmi sagatavoja: {signatory}"
         received_text = "Pavadzīmi saņēma:"
+    elif doc_type == "Avansa rēķins":
+        prepared_text = f"Avansa rēķinu sagatavoja: {signatory}"
+        received_text = "Avansa rēķinu saņēma:"
     else: # Rēķins
         prepared_text = f"Rēķinu sagatavoja: {signatory}"
         received_text = "Rēķinu saņēma:"
@@ -243,24 +267,3 @@ def generate_pdf(data):
     doc.build(elements)
     buffer.seek(0)
     return buffer
-
-if __name__ == "__main__":
-    # Test data
-    data = {
-        'doc_type': 'Pavadzīme',
-        'doc_id': 'BR 0049',
-        'date': '09.01.2026',
-        'due_date': '23.01.2026',
-        'client_name': 'TEST KLIENTS',
-        'client_address': 'Adrese',
-        'client_reg_no': '000000',
-        'client_vat_no': 'LV00000',
-        'items': [{'name': 'Prece', 'unit': 'gab', 'qty': 1, 'price': '10.00', 'total': '10.00'}],
-        'subtotal': '10.00', 'vat': '2.10', 'total': '12.10',
-        'amount_words': 'Desmit eiro',
-        'signatory': 'Parakstītājs'
-    }
-    pdf = generate_pdf(data)
-    with open("test_output.pdf", "wb") as f:
-        f.write(pdf.read())
-    print("PDF generated.")
