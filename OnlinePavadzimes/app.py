@@ -139,9 +139,26 @@ def main():
     history = load_history()
     next_number = get_next_invoice_number(history)
 
-    # --- SĀNA JOSLA: Iestatījumi un Autorizācija ---
-    st.sidebar.header("Iestatījumi")
+    # --- SĀNA JOSLA: 1. Dokumenta Dati (Pārvietoti uz augšu) ---
+    st.sidebar.header("Rēķina iestatījumi")
+
+    # Dokumenta ID
+    if 'doc_number_input' not in st.session_state:
+        st.session_state.doc_number_input = next_number
+
+    doc_number_input = st.sidebar.number_input(
+        "Dokumenta Nr.", min_value=1, value=st.session_state.doc_number_input, step=1
+    )
+    doc_id = f"BR {doc_number_input:04d}" 
+    st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
+    doc_date = st.sidebar.date_input("Datums", datetime.date.today())
+    due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14))
+    doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins", "Avansa rēķins"])
+    
+    st.sidebar.markdown("---")
+
+    # --- SĀNA JOSLA: 2. Google Drive (Pārvietots uz leju) ---
     st.sidebar.subheader("Google Drive")
     service = get_drive_service()
 
@@ -186,27 +203,9 @@ def main():
             st.sidebar.error("Trūkst credentials.json faila!")
 
     st.sidebar.markdown("---")
-
-    # Dokumenta ID
-    if 'doc_number_input' not in st.session_state:
-        st.session_state.doc_number_input = next_number
-
-    doc_number_input = st.sidebar.number_input(
-        "Dokumenta Nr.", min_value=1, value=st.session_state.doc_number_input, step=1
-    )
-    doc_id = f"BR {doc_number_input:04d}" 
-    st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
-    doc_date = st.sidebar.date_input("Datums", datetime.date.today())
-    due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14))
-    doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins", "Avansa rēķins"])
-    
-    # ==========================================
-    # JAUNS: DATU PĀRVALDĪBA (Vēstures dzēšana)
-    # Pārvietots uz sāna joslas apakšu
-    # ==========================================
-    st.sidebar.markdown("---")
-    st.sidebar.header("Datu pārvaldība")
+    # --- SĀNA JOSLA: 3. Datu Pārvaldība (Apakšā) ---
+    st.sidebar.subheader("Datu pārvaldība")
 
     # Inicializējam sesijas stāvokli apstiprinājumam, ja tas vēl nav
     if 'confirm_delete_history' not in st.session_state:
@@ -243,7 +242,7 @@ def main():
             st.rerun()
     # ==========================================
     
-    # --- Klienta dati ---
+    # --- GALVENAIS SATURS ---
     st.header("Klients")
     col1, col2 = st.columns([1, 1])
     
