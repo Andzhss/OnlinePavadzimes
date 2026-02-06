@@ -23,7 +23,7 @@ def main():
     doc_date = st.sidebar.date_input("Datums", datetime.date.today())
     due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14))
     
-    # 3. Document Type (Updated with Avansa rēķins)
+    # 3. Document Type
     doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins", "Avansa rēķins"])
     
     # --- Client Data ---
@@ -121,18 +121,35 @@ def main():
             vat = subtotal * 0.21
             total = subtotal + vat
             
-            # --- Advance Invoice Logic ---
+            # --- Avansa Invoice Logic ---
             if doc_type == "Avansa rēķins":
                 st.markdown("### Avansa iestatījumi")
-                # Default value is the full total
-                advance_payment = st.number_input(
-                    "Avansa rēķina apmaksājamā summa (EUR)", 
-                    min_value=0.0, 
-                    max_value=total, 
-                    value=total, 
-                    step=10.0,
-                    help="Norādiet summu, kas jāmaksā kā avanss. Ja jāmaksā pilna summa, atstājiet kā ir."
+                
+                # Switch implementation
+                calc_method = st.radio(
+                    "Aprēķina veids:",
+                    ["Avansa rēķina apmaksājamā summa ciparos (EUR)", "Avansa rēķina apmaksājamā summa procentos (%)"],
+                    horizontal=True
                 )
+                
+                if calc_method == "Avansa rēķina apmaksājamā summa ciparos (EUR)":
+                    advance_payment = st.number_input(
+                        "Ievadiet summu (EUR)", 
+                        min_value=0.0, 
+                        max_value=total, 
+                        value=total, 
+                        step=10.0
+                    )
+                else:
+                    advance_percent = st.number_input(
+                        "Ievadiet procentus (%)", 
+                        min_value=0.0, 
+                        max_value=100.0, 
+                        value=50.0, 
+                        step=5.0
+                    )
+                    # Calculate EUR from percentage of TOTAL
+                    advance_payment = total * (advance_percent / 100)
                 
                 st.markdown("### Aprēķins")
                 t_col1, t_col2 = st.columns([3, 1])
@@ -140,13 +157,12 @@ def main():
                     st.markdown(f"Kopējā pasūtījuma summa: € {fmt_curr(total)}")
                     st.markdown(f"**APMAKSĀJAMAIS AVANSS:** € {fmt_curr(advance_payment)}")
                 
-                # Words for the ADVANCE amount
                 amount_words = money_to_words_lv(advance_payment)
                 st.info(f"**Summa vārdiem (Avanss):** {amount_words}")
                 
             else:
                 # Standard Invoice/Pavadzīme
-                advance_payment = total # Use full total
+                advance_payment = total
                 
                 st.markdown("### Aprēķins")
                 t_col1, t_col2 = st.columns([3, 1])
@@ -155,7 +171,6 @@ def main():
                     st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
                     st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
                 
-                # Words for the FULL amount
                 amount_words = money_to_words_lv(total)
                 st.info(f"**Summa vārdiem:** {amount_words}")
             
@@ -193,11 +208,9 @@ def main():
         'client_reg_no': st.session_state.client_data['reg_no'],
         'client_vat_no': st.session_state.client_data['vat_no'],
         'items': [],
-        # Formatted strings for standard display
         'subtotal': fmt_curr(subtotal),
         'vat': fmt_curr(vat),
         'total': fmt_curr(total),
-        # Raw values for custom logic in generators
         'raw_total': total,
         'raw_advance': advance_payment,
         'amount_words': amount_words,
