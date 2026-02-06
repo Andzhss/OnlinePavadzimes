@@ -1,59 +1,95 @@
 import streamlit as st
 import datetime
+import pandas as pd
+import json
+import os
 from utils import scrape_lursoft, money_to_words_lv
 from pdf_generator import generate_pdf
 from docx_generator import generate_docx
-import pandas as pd
-import io
-import json
-import os
 
-# Faila nosaukums, kur glabāsim atmiņu
-SETTINGS_FILE = "settings.json"
-
-# 1. Funkcija, lai ielādētu datus (nolasa no faila)
-def load_settings():
-    if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
-    return {"last_invoice_no": 49} # Noklusējuma vērtība, ja faila nav
-
-# 2. Funkcija, lai saglabātu datus (ieraksta failā)
-def save_settings(number):
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump({"last_invoice_no": number}, f)
-
-def main():
-    # Ielādējam saglabāto numuru
-    saved_settings = load_settings()
-    
-    # ... Tavs esošais kods ...
-    
-    st.sidebar.header("Iestatījumi")
-    
-    # Ievietojam saglabāto vērtību kā 'value'
-    doc_number_input = st.sidebar.number_input(
-        "Dokumenta Nr.", 
-        min_value=1, 
-        value=saved_settings["last_invoice_no"], # Ņemam no faila
-        step=1
-    )
-    
-    # Ja lietotājs nomaina numuru, mēs to uzreiz saglabājam failā
-    if doc_number_input != saved_settings["last_invoice_no"]:
-        save_settings(doc_number_input)
-        
-    # ... Tālāk viss tavs pārējais kods ...
+# --- Konfigurācija ---
 st.set_page_config(page_title="SIA BRATUS Invoice Generator", layout="wide")
+HISTORY_FILE = "invoice_history.json"
+
+# --- Vēstures Funkcijas ---
+def load_history():
+    """Ielādē rēķinu vēsturi no JSON faila."""
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r", encoding='utf-8') as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return []
+    return []
+
+def get_next_invoice_number(history):
+    """Atrod nākamo brīvo rēķina numuru, balstoties uz vēsturi."""
+    if not history:
+        return 49 # Sākuma vērtība, ja vēsture tukša
+    
+    # Mēģinām atrast lielāko skaitli no ID "BR XXXX"
+    max_num = 0
+    for entry in history:
+        doc_id = entry.get('doc_id', '')
+        # Pieņemam formātu "BR 0049" -> ņemam pēdējo daļu
+        parts = doc_id.split()
+        if len(parts) > 1 and parts[-1].isdigit():
+            num = int(parts[-1])
+            if num > max_num:
+                max_num = num
+    
+    return max_num + 1
+
+def save_to_history(invoice_data):
+    """Saglabā vai atjauno rēķina ierakstu vēsturē."""
+    history = load_history()
+    
+    # Izveidojam vienkāršotu ierakstu priekš vēstures tabulas
+    new_entry = {
+        'doc_id': invoice_data['doc_id'],
+        'date': invoice_data['date'],
+        'client_name': invoice_data['client_name'],
+        'doc_type': invoice_data['doc_type'],
+        'total': invoice_data.get('total', '0.00'), # String formatētā summa
+        'created_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    # Pārbaudām, vai šāds ID jau eksistē, un atjaunojam to, nevis dublējam
+    updated = False
+    for i, entry in enumerate(history):
+        if entry['doc_id'] == new_entry['doc_id']:
+            history[i] = new_entry
+            updated = True
+            break
+    
+    if not updated:
+        history.append(new_entry)
+    
+    # Saglabājam failā
+    with open(HISTORY_FILE, "w", encoding='utf-8') as f:
+        json.dump(history, f, indent=4, ensure_ascii=False)
 
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
 
+    # Ielādējam vēsturi, lai zinātu nākamo numuru
+    history = load_history()
+    next_number = get_next_invoice_number(history)
+
     # --- Sidebar Configuration ---
     st.sidebar.header("Iestatījumi")
     
-    # 1. Document ID
-    doc_number_input = st.sidebar.number_input("Dokumenta Nr.", min_value=1, value=49, step=1)
+    # 1. Document ID (Automātiski aizpildīts ar next_number)
+    # Pievienojam key='doc_num', lai streamlit atcerētos manuālas izmaiņas sesijas laikā
+    if 'doc_number_input' not in st.session_state:
+        st.session_state.doc_number_input = next_number
+
+    doc_number_input = st.sidebar.number_input(
+        "Dokumenta Nr.", 
+        min_value=1, 
+        value=st.session_state.doc_number_input, 
+        step=1
+    )
     doc_id = f"BR {doc_number_input:04d}" 
     st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
@@ -142,9 +178,8 @@ def main():
     total = 0.0
     amount_words = ""
     advance_payment = 0.0
-    advance_percent = 0.0 # Initialize
+    advance_percent = 0.0
     
-    # Helper to format currency LV style
     def fmt_curr(val):
         return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
 
@@ -164,7 +199,6 @@ def main():
             if doc_type == "Avansa rēķins":
                 st.markdown("### Avansa iestatījumi")
                 
-                # Switch implementation
                 calc_method = st.radio(
                     "Aprēķina veids:",
                     ["Avansa rēķina apmaksājamā summa ciparos (EUR)", "Avansa rēķina apmaksājamā summa procentos (%)"],
@@ -179,7 +213,6 @@ def main():
                         value=total, 
                         step=10.0
                     )
-                    # Aprēķinam procentus priekš PDF/DOCX
                     if total > 0:
                         advance_percent = (advance_payment / total) * 100
                     else:
@@ -193,7 +226,6 @@ def main():
                         step=5.0
                     )
                     advance_percent = advance_percent_input
-                    # Calculate EUR from percentage of TOTAL
                     advance_payment = total * (advance_percent / 100)
                 
                 st.markdown("### Aprēķins")
@@ -206,7 +238,6 @@ def main():
                 st.info(f"**Summa vārdiem (Avanss):** {amount_words}")
                 
             else:
-                # Standard Invoice/Pavadzīme
                 advance_payment = total
                 
                 st.markdown("### Aprēķins")
@@ -235,14 +266,15 @@ def main():
     
     col_sig1, col_sig2 = st.columns(2)
     with col_sig1:
-        selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options)
+        # Pievienojam key, lai atcerētos izvēli
+        selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options, key="sig_select")
     with col_sig2:
-        signatory_title = st.text_input("Amats", "valdes loceklis")
+        signatory_title = st.text_input("Amats", "valdes loceklis", key="sig_title")
         
     full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
     st.caption(f"Paraksta laukā būs: {full_signatory}")
     
-    # Data collection for generation
+    # Datu savākšana ģenerēšanai un VĒSTUREI
     invoice_data = {
         'doc_type': doc_type,
         'doc_id': doc_id,
@@ -258,7 +290,7 @@ def main():
         'total': fmt_curr(total),
         'raw_total': total,
         'raw_advance': advance_payment,
-        'advance_percent': advance_percent, # Nododam procentus tālāk
+        'advance_percent': advance_percent,
         'amount_words': amount_words,
         'signatory': full_signatory
     }
@@ -280,11 +312,14 @@ def main():
     try:
         pdf_file = generate_pdf(invoice_data)
         with d_col1:
+            # Pievienojam on_click=save_to_history
             st.download_button(
                 label="📄 Lejupielādēt PDF",
                 data=pdf_file,
                 file_name=f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf",
-                mime="application/pdf"
+                mime="application/pdf",
+                on_click=save_to_history,
+                args=(invoice_data,)
             )
     except Exception as e:
         st.error(f"Kļūda ģenerējot PDF: {e}")
@@ -293,14 +328,45 @@ def main():
     try:
         docx_file = generate_docx(invoice_data)
         with d_col2:
+            # Pievienojam on_click=save_to_history
             st.download_button(
                 label="📝 Lejupielādēt Word",
                 data=docx_file,
                 file_name=f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                on_click=save_to_history,
+                args=(invoice_data,)
             )
     except Exception as e:
         st.error(f"Kļūda ģenerējot Word: {e}")
+
+    # --- Vēstures sadaļa ---
+    st.markdown("---")
+    with st.expander("🗄️ Rēķinu vēsture (Noklikšķiniet, lai atvērtu)", expanded=False):
+        if history:
+            # Pārveidojam par DataFrame skaistākai attēlošanai
+            hist_df = pd.DataFrame(history)
+            
+            # Pārkārtojam kolonnas un nosaukumus
+            display_cols = ['doc_id', 'date', 'client_name', 'doc_type', 'total', 'created_at']
+            rename_map = {
+                'doc_id': 'Nr.',
+                'date': 'Datums',
+                'client_name': 'Klients',
+                'doc_type': 'Tips',
+                'total': 'Summa (EUR)',
+                'created_at': 'Izveidots'
+            }
+            
+            # Pārbaudām, vai kolonnas eksistē (ja faila struktūra mainījusies)
+            valid_cols = [c for c in display_cols if c in hist_df.columns]
+            
+            st.dataframe(
+                hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), 
+                use_container_width=True
+            )
+        else:
+            st.info("Vēsture ir tukša. Lejupielādējiet pirmo rēķinu, lai tas parādītos šeit.")
 
 if __name__ == "__main__":
     main()
