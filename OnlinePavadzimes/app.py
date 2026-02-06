@@ -135,11 +135,26 @@ def handle_download(invoice_data, file_buffer, filename, mime_type):
 
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
+    
+    # --- CSS: Iekrāsot šodienas datumu kalendārā ---
+    # Tas mēģina atrast šūnu ar 'Today' vai 'today' atribūtos un piešķir tai rāmīti.
+    st.markdown("""
+        <style>
+        div[data-baseweb="calendar"] div[aria-label*="Today"],
+        div[data-baseweb="calendar"] div[aria-label*="today"],
+        div[data-baseweb="calendar"] div[aria-label*="šodiena"] {
+            border: 2px solid #CDBF96 !important;
+            border-radius: 50%;
+            font-weight: bold;
+            background-color: rgba(205, 191, 150, 0.2);
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
     history = load_history()
     next_number = get_next_invoice_number(history)
 
-    # --- SĀNA JOSLA: 1. Dokumenta Dati (Pārvietoti uz augšu) ---
+    # --- SĀNA JOSLA: 1. Dokumenta Dati ---
     st.sidebar.header("Rēķina iestatījumi")
 
     # Dokumenta ID
@@ -152,13 +167,15 @@ def main():
     doc_id = f"BR {doc_number_input:04d}" 
     st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
-    doc_date = st.sidebar.date_input("Datums", datetime.date.today())
-    due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14))
+    # IZMAIŅA: Pievienots format="DD.MM.YYYY"
+    doc_date = st.sidebar.date_input("Datums", datetime.date.today(), format="DD.MM.YYYY")
+    due_date = st.sidebar.date_input("Apmaksāt līdz", doc_date + datetime.timedelta(days=14), format="DD.MM.YYYY")
+    
     doc_type = st.sidebar.selectbox("Dokumenta tips", ["Pavadzīme", "Rēķins", "Avansa rēķins"])
     
     st.sidebar.markdown("---")
 
-    # --- SĀNA JOSLA: 2. Google Drive (Pārvietots uz leju) ---
+    # --- SĀNA JOSLA: 2. Google Drive ---
     st.sidebar.subheader("Google Drive")
     service = get_drive_service()
 
@@ -204,7 +221,7 @@ def main():
 
     st.sidebar.markdown("---")
     
-    # --- SĀNA JOSLA: 3. Datu Pārvaldība (Apakšā) ---
+    # --- SĀNA JOSLA: 3. Datu Pārvaldība ---
     st.sidebar.subheader("Datu pārvaldība")
 
     # Inicializējam sesijas stāvokli apstiprinājumam, ja tas vēl nav
