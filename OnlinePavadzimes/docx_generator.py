@@ -149,7 +149,7 @@ def generate_docx(data):
         p.add_run(f"€ {value}").bold = bold
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    is_advance_doc = (doc_type == "Avansa rēķins")
+    is_advance_doc = ("avansa" in doc_type.lower())
     
     set_total_row(0, "KOPĀ (bez PVN)", subtotal, False)
     set_total_row(1, "PVN (21%)", vat, False)
@@ -178,7 +178,7 @@ def generate_docx(data):
     doc.add_paragraph()
     
     p = doc.add_paragraph()
-    prefix = "Summa vārdiem (avanss): " if doc_type == "Avansa rēķins" else "Summa vārdiem: "
+    prefix = "Summa vārdiem (avanss): " if is_advance_doc else "Summa vārdiem: "
     p.add_run(f"{prefix}{data.get('amount_words', '')}").italic = True
     
     doc.add_paragraph()
@@ -197,10 +197,10 @@ def generate_docx(data):
     
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
     
-    if doc_type == "Pavadzīme":
+    if "pavadzīme" in doc_type.lower():
         prepared_text = f"Pavadzīmi sagatavoja: {signatory}"
         received_text = "Pavadzīmi saņēma:"
-    elif doc_type == "Avansa rēķins":
+    elif "avansa rēķins" in doc_type.lower():
         prepared_text = f"Avansa rēķinu sagatavoja: {signatory}"
         received_text = "Avansa rēķinu saņēma:"
     else:
