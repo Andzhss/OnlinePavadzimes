@@ -120,21 +120,22 @@ def save_to_history_generic(invoice_data, filepath):
     with open(filepath, "w", encoding='utf-8') as f:
         json.dump(history, f, indent=4, ensure_ascii=False)
 
-def handle_download(invoice_data, file_buffer, filename, mime_type):
-    save_to_history_generic(invoice_data, HISTORY_FILE)
-    if get_drive_service():
-        with st.spinner("Augšupielādē Google Drive..."):
-            success = upload_to_drive(file_buffer, filename, mime_type)
-            if success:
-                st.toast(f"✅ Saglabāts Drive: {filename}", icon="☁️")
-            else:
-                st.toast("⚠️ Kļūda saglabājot Drive", icon="❌")
+def handle_download(invoice_data, file_buffer, filename, mime_type, is_proforma):
+    if is_proforma:
+        save_to_history_generic(invoice_data, TEST_HISTORY_FILE)
+        st.toast("✅ Proformas dokuments saglabāts lokālajā testa vēsturē", icon="💾")
     else:
-        st.toast("Nav pieslēgts Google Drive (tikai lejupielādēts)", icon="⚠️")
+        save_to_history_generic(invoice_data, HISTORY_FILE)
+        if get_drive_service():
+            with st.spinner("Augšupielādē Google Drive..."):
+                success = upload_to_drive(file_buffer, filename, mime_type)
+                if success:
+                    st.toast(f"✅ Saglabāts Drive: {filename}", icon="☁️")
+                else:
+                    st.toast("⚠️ Kļūda saglabājot Drive", icon="❌")
+        else:
+            st.toast("Nav pieslēgts Google Drive (tikai lejupielādēts)", icon="⚠️")
 
-def handle_test_download(invoice_data):
-    save_to_history_generic(invoice_data, TEST_HISTORY_FILE)
-    st.toast("✅ Testa pavadzīme saglabāta lokālajā testa vēsturē", icon="💾")
 
 def load_test_invoice(selected_test):
     doc_num_str = selected_test.get('doc_id', '').split()[-1]
@@ -159,7 +160,13 @@ def load_test_invoice(selected_test):
         })
     st.session_state.items_df = pd.DataFrame(items_list)
     
-    st.session_state.loaded_doc_type = selected_test.get('doc_type', 'Pavadzīme')
+    # Atpazīstam proformas nosaukumus un ieliekam standarta
+    loaded_type = selected_test.get('doc_type', 'Pavadzīme')
+    if loaded_type == "Proformas pavadzīme": loaded_type = "Pavadzīme"
+    elif loaded_type == "Proformas rēķins": loaded_type = "Rēķins"
+    elif loaded_type == "Proformas avansa rēķins": loaded_type = "Avansa rēķins"
+        
+    st.session_state.loaded_doc_type = loaded_type
     st.session_state.loaded_comments = selected_test.get('comments', '')
     try:
         st.session_state.loaded_doc_date = datetime.datetime.strptime(selected_test.get('date', ''), "%d.%m.%Y").date()
@@ -407,33 +414,26 @@ def main():
 
     st.markdown("---")
     
-    # === POGU SADAĻA ===
+    # === POGU UN LEJUPIELĀDES SADAĻA ===
     st.markdown("### Lejupielāde un Arhivēšana")
     
-    # 1. TESTA POGA
-    st.markdown("**Testa dokumenti (Klients pārbauda - Nesaglabājas vēsturē/Drive)**")
-    try:
-        test_pdf_file = generate_pdf(invoice_data)
-        file_name_test = f"TESTS_{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf"
-        
-        st.download_button(
-            label="📄 Ielādēt testa pavadzīmi (PDF)",
-            data=test_pdf_file,
-            file_name=file_name_test,
-            mime="application/pdf",
-            on_click=handle_test_download,
-            args=(invoice_data,)
-        )
-    except Exception as e:
-        st.error(f"Kļūda Testa PDF: {e}")
+    is_proforma = st.toggle("📝 Ģenerēt kā Proformas (testa) dokumentu", value=False, help="Ja ieslēgts: Dokuments sauksies 'Proformas...', saglabāsies TIKAI testa vēsturē un NETIKS augšupielādēts Google Drive.")
 
-    st.markdown("<br/>**Gala dokumenti (Saglabājas vēsturē un Drive)**", unsafe_allow_html=True)
+    # Ja toggle ir aktīvs, nomainām nosaukumu pirms ģenerēšanas
+    if is_proforma:
+        if doc_type == "Pavadzīme":
+            invoice_data['doc_type'] = "Proformas pavadzīme"
+        elif doc_type == "Rēķins":
+            invoice_data['doc_type'] = "Proformas rēķins"
+        elif doc_type == "Avansa rēķins":
+            invoice_data['doc_type'] = "Proformas avansa rēķins"
+            
     d_col1, d_col2 = st.columns(2)
     
-    # 2. ĪSTAIS PDF
+    # 1. PDF poga
     try:
         pdf_file = generate_pdf(invoice_data)
-        file_name_pdf = f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf"
+        file_name_pdf = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf"
         
         with d_col1:
             st.download_button(
@@ -442,15 +442,15 @@ def main():
                 file_name=file_name_pdf,
                 mime="application/pdf",
                 on_click=handle_download,
-                args=(invoice_data, pdf_file, file_name_pdf, "application/pdf")
+                args=(invoice_data, pdf_file, file_name_pdf, "application/pdf", is_proforma)
             )
     except Exception as e:
         st.error(f"Kļūda PDF: {e}")
         
-    # 3. ĪSTAIS WORD
+    # 2. WORD poga
     try:
         docx_file = generate_docx(invoice_data)
-        file_name_docx = f"{doc_type.replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx"
+        file_name_docx = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx"
         
         with d_col2:
             st.download_button(
@@ -459,7 +459,7 @@ def main():
                 file_name=file_name_docx,
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 on_click=handle_download,
-                args=(invoice_data, docx_file, file_name_docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                args=(invoice_data, docx_file, file_name_docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", is_proforma)
             )
     except Exception as e:
         st.error(f"Kļūda Word: {e}")
