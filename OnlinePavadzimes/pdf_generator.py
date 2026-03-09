@@ -17,12 +17,12 @@ TEXT_COLOR = colors.black
 # --- Fontu ielāde ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_URLS = {
-    "DejaVuSans.ttf": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans.ttf",
-    "DejaVuSans-Bold.ttf": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Bold.ttf",
-    "DejaVuSans-Oblique.ttf": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Oblique.ttf"
+    "Roboto-Regular.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf",
+    "Roboto-Bold.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf",
+    "Roboto-Italic.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Italic.ttf"
 }
 
-# 1. Automātiski lejupielādē fontus, ja tie neeksistē (garantē latviešu burtu atbalstu)
+# Automātiski lejupielādē fontus, ja tie neeksistē (Ideāli strādā Streamlit Cloud)
 for font_file, url in FONT_URLS.items():
     font_path = os.path.join(CURRENT_DIR, font_file)
     if not os.path.exists(font_path):
@@ -33,23 +33,26 @@ for font_file, url in FONT_URLS.items():
         except Exception as e:
             print(f"Neizdevās lejupielādēt fontu: {e}")
 
-# 2. Reģistrē fontus
-try:
-    pdfmetrics.registerFont(TTFont('DejaVuSans', os.path.join(CURRENT_DIR, "DejaVuSans.ttf")))
-    REGULAR_FONT = 'DejaVuSans'
-except:
+# Reģistrē fontus
+if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")):
+    pdfmetrics.registerFont(TTFont('Roboto', os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")))
+    REGULAR_FONT = 'Roboto'
+    
+    if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Bold.ttf")):
+        pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(CURRENT_DIR, "Roboto-Bold.ttf")))
+        BOLD_FONT = 'Roboto-Bold'
+    else:
+        BOLD_FONT = 'Roboto'
+        
+    if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Italic.ttf")):
+        pdfmetrics.registerFont(TTFont('Roboto-Italic', os.path.join(CURRENT_DIR, "Roboto-Italic.ttf")))
+        ITALIC_FONT = 'Roboto-Italic'
+    else:
+        ITALIC_FONT = 'Roboto'
+else:
+    # Fallback, ja neizdevās
     REGULAR_FONT = 'Helvetica'
-    
-try:
-    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', os.path.join(CURRENT_DIR, "DejaVuSans-Bold.ttf")))
-    BOLD_FONT = 'DejaVuSans-Bold'
-except:
     BOLD_FONT = 'Helvetica-Bold'
-    
-try:
-    pdfmetrics.registerFont(TTFont('DejaVuSans-Oblique', os.path.join(CURRENT_DIR, "DejaVuSans-Oblique.ttf")))
-    ITALIC_FONT = 'DejaVuSans-Oblique'
-except:
     ITALIC_FONT = 'Helvetica-Oblique'
 
 # --- Palīgklase horizontālajām līnijām ---
@@ -140,9 +143,8 @@ def generate_pdf(data):
     # ==========================================
     # 1. LOGO UN DOKUMENTA INFO
     # ==========================================
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     logo_filename = "BRATUS MELNS LOGO PNG.png"
-    logo_path = os.path.join(current_dir, logo_filename)
+    logo_path = os.path.join(CURRENT_DIR, logo_filename)
     
     if os.path.exists(logo_path):
         logo = RLImage(logo_path, width=35*mm, height=26*mm, kind='proportional') 
@@ -316,12 +318,13 @@ def generate_pdf(data):
                               ParagraphStyle('Words', parent=style_italic, alignment=TA_RIGHT)))
     
     # ==========================================
-    # 7. PARAKSTI UN PAPILDINFO (Komentāri iekļauti šeit)
+    # 7. PARAKSTI UN PAPILDINFO
     # ==========================================
     elements.append(Spacer(1, 5*mm))
     elements.append(HorizontalLine(thickness=0.2))
     elements.append(Spacer(1, 2*mm))
     
+    # KOMENTĀRU IEVAKTE (PDF) - Kopā ar "Papildus informācija"
     comments = data.get('comments', '').strip()
     if comments:
         comments_html = comments.replace('\n', '<br/>')
