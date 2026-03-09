@@ -13,7 +13,6 @@ def fmt_curr(val):
 def generate_docx(data):
     doc = Document()
     
-    # Set margins
     sections = doc.sections
     for section in sections:
         section.top_margin = Cm(2)
@@ -21,19 +20,16 @@ def generate_docx(data):
         section.left_margin = Cm(2)
         section.right_margin = Cm(2)
         
-    # Styles - nomainīts uz Arial drošai latviešu valodas saderībai
     style = doc.styles['Normal']
     font = style.font
     font.name = 'Arial'
     font.size = Pt(10)
     
-    # --- Header ---
     table = doc.add_table(rows=1, cols=2)
     table.autofit = False
     table.columns[0].width = Cm(10)
     table.columns[1].width = Cm(7)
     
-    # Logo
     cell_logo = table.cell(0, 0)
     paragraph = cell_logo.paragraphs[0]
     
@@ -46,7 +42,6 @@ def generate_docx(data):
     except Exception as e:
         paragraph.add_run("LOGO")
         
-    # Info
     cell_info = table.cell(0, 1)
     p = cell_info.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -63,9 +58,8 @@ def generate_docx(data):
     p.add_run(f"Datums: {date}\n")
     p.add_run(f"Apmaksāt līdz: {due_date}")
     
-    doc.add_paragraph() # Spacer
+    doc.add_paragraph()
     
-    # --- Client ---
     p = doc.add_paragraph()
     p.add_run("KLIENTS").bold = True
     
@@ -77,13 +71,11 @@ def generate_docx(data):
     
     doc.add_paragraph()
     
-    # --- Sender & Bank ---
     table = doc.add_table(rows=1, cols=2)
     table.autofit = False
     table.columns[0].width = Cm(8.5)
     table.columns[1].width = Cm(8.5)
     
-    # Sender
     cell = table.cell(0, 0)
     p = cell.paragraphs[0]
     p.add_run("PIEGĀDĀTĀJS").bold = True
@@ -95,7 +87,6 @@ def generate_docx(data):
     p.add_run("\nPVN Nr.: LV40203628316")
     p.add_run("\nTālrunis: +371 24424434")
     
-    # Bank
     cell = table.cell(0, 1)
     p = cell.paragraphs[0]
     p.add_run("AS Swedbank").bold = True
@@ -104,7 +95,6 @@ def generate_docx(data):
     
     doc.add_paragraph()
     
-    # --- Items Table ---
     headers = ["NOSAUKUMS", "Mērvienība", "DAUDZUMS", "CENA (EUR)", "KOPĀ (EUR)"]
     items = data.get('items', [])
     
@@ -138,7 +128,6 @@ def generate_docx(data):
         
     doc.add_paragraph()
     
-    # --- Totals ---
     table = doc.add_table(rows=3, cols=3)
     table.autofit = False
     table.columns[0].width = Cm(11)
@@ -166,7 +155,6 @@ def generate_docx(data):
     set_total_row(1, "PVN (21%)", vat, False)
     set_total_row(2, "Kopējā summa", total, not is_advance_doc)
     
-    # --- Avansa Special Section ---
     if is_advance_doc:
         doc.add_paragraph()
         raw_advance = data.get('raw_advance', 0.0)
@@ -189,14 +177,13 @@ def generate_docx(data):
 
     doc.add_paragraph()
     
-    # Amount words
     p = doc.add_paragraph()
     prefix = "Summa vārdiem (avanss): " if doc_type == "Avansa rēķins" else "Summa vārdiem: "
     p.add_run(f"{prefix}{data.get('amount_words', '')}").italic = True
     
     doc.add_paragraph()
     
-    # KOMENTĀRU IEVAKTE ZEM VIRSRAKSTA (WORD)
+    # KOMENTĀRU IEVAKTE
     p_info = doc.add_paragraph()
     p_info.add_run("Papildus informācija:").bold = True
     
@@ -208,7 +195,6 @@ def generate_docx(data):
     
     doc.add_paragraph()
     
-    # --- Signatures ---
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
     
     if doc_type == "Pavadzīme":
