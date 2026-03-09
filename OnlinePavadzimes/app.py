@@ -19,7 +19,7 @@ from docx_generator import generate_docx
 # --- Konfigurācija ---
 st.set_page_config(page_title="SIA BRATUS Invoice Generator", layout="wide")
 HISTORY_FILE = "invoice_history.json"
-TEST_HISTORY_FILE = "test_invoice_history.json"  # Jauns fails testa vēsturei
+TEST_HISTORY_FILE = "test_invoice_history.json"
 CREDENTIALS_FILE = "credentials.json"
 TOKEN_FILE = "token.json"
 
@@ -133,11 +133,9 @@ def handle_download(invoice_data, file_buffer, filename, mime_type):
         st.toast("Nav pieslēgts Google Drive (tikai lejupielādēts)", icon="⚠️")
 
 def handle_test_download(invoice_data):
-    """Saglabā tikai testa vēsturē (ne Drive, ne īstajā vēsturē)"""
     save_to_history_generic(invoice_data, TEST_HISTORY_FILE)
     st.toast("✅ Testa pavadzīme saglabāta lokālajā testa vēsturē", icon="💾")
 
-# Ielādē datus no testa vēstures
 def load_test_invoice(selected_test):
     doc_num_str = selected_test.get('doc_id', '').split()[-1]
     if doc_num_str.isdigit():
@@ -188,7 +186,6 @@ def main():
     doc_id = f"BR {doc_number_input:04d}" 
     st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
-    # Ielādes datumi un tips
     default_doc_date = st.session_state.get('loaded_doc_date', datetime.date.today())
     doc_date = st.sidebar.date_input("Datums", default_doc_date)
     
@@ -404,8 +401,8 @@ def main():
                 'name': row.get('NOSAUKUMS', ''), 'unit': row.get('Mērvienība', ''),
                 'qty': str(row.get('DAUDZUMS', 0)), 'price': fmt_curr(row.get('CENA (EUR)', 0)),
                 'total': fmt_curr(row.get('KOPĀ (EUR)', 0)),
-                'raw_qty': float(row.get('DAUDZUMS', 0)),    # Saglabājam raw datus ielādei
-                'raw_price': float(row.get('CENA (EUR)', 0)) # Saglabājam raw datus ielādei
+                'raw_qty': float(row.get('DAUDZUMS', 0)),
+                'raw_price': float(row.get('CENA (EUR)', 0))
             })
 
     st.markdown("---")
