@@ -22,7 +22,7 @@ FONT_URLS = {
     "DejaVuSans-Oblique.ttf": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Oblique.ttf"
 }
 
-# 1. Automātiski lejupielādē fontus (Ja to vēl nav) - Garantē latviešu burtu attēlošanu!
+# 1. Automātiski lejupielādē fontus, ja tie neeksistē (garantē latviešu burtu atbalstu)
 for font_file, url in FONT_URLS.items():
     font_path = os.path.join(CURRENT_DIR, font_file)
     if not os.path.exists(font_path):
@@ -140,8 +140,9 @@ def generate_pdf(data):
     # ==========================================
     # 1. LOGO UN DOKUMENTA INFO
     # ==========================================
+    current_dir = os.path.dirname(os.path.abspath(__file__))
     logo_filename = "BRATUS MELNS LOGO PNG.png"
-    logo_path = os.path.join(CURRENT_DIR, logo_filename)
+    logo_path = os.path.join(current_dir, logo_filename)
     
     if os.path.exists(logo_path):
         logo = RLImage(logo_path, width=35*mm, height=26*mm, kind='proportional') 
@@ -315,7 +316,7 @@ def generate_pdf(data):
                               ParagraphStyle('Words', parent=style_italic, alignment=TA_RIGHT)))
     
     # ==========================================
-    # 7. PARAKSTI UN PAPILDINFO (Ieskaitot komentārus)
+    # 7. PARAKSTI UN PAPILDINFO (Komentāri iekļauti šeit)
     # ==========================================
     elements.append(Spacer(1, 5*mm))
     elements.append(HorizontalLine(thickness=0.2))
@@ -324,7 +325,6 @@ def generate_pdf(data):
     comments = data.get('comments', '').strip()
     if comments:
         comments_html = comments.replace('\n', '<br/>')
-        # Komentāri vienā blokā ar Papildus informācija, izskatīsies glīti un strādās arī testa pavadzīmēs
         elements.append(Paragraph(f"<b>Papildus informācija:</b><br/>{comments_html}", style_normal))
     else:
         elements.append(Paragraph("<b>Papildus informācija:</b>", style_bold))
