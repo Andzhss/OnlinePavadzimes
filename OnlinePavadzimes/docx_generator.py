@@ -197,14 +197,20 @@ def generate_docx(data):
     p.add_run(f"{prefix}{data.get('amount_words', '')}").italic = True
     
     doc.add_paragraph()
-    doc.add_paragraph().add_run("Papildus informācija:").bold = True
+    doc.add_paragraph()
     
-    # KOMENTĀRU IEVAKTE (WORD)
+    # KOMENTĀRU IEVAKTE ZEM VIRSRAKSTA (WORD)
+    p_info = doc.add_paragraph()
+    p_info.add_run("Papildus informācija:").bold = True
+    
     comments = data.get('comments', '').strip()
     if comments:
-        doc.add_paragraph(comments)
+        # Ieliek komentārus uzreiz jaunā rindā zem "Papildus informācija:"
+        p_info.add_run(f"\n{comments}")
     else:
-        doc.add_paragraph()
+        p_info.add_run("\n")
+    
+    doc.add_paragraph()
     
     # --- Signatures ---
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
