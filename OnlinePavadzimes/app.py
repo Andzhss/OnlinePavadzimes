@@ -30,7 +30,6 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 # --- Google Drive Funkcijas ---
 
 def get_drive_service():
-    """Mēģina iegūt aktīvu Google Drive savienojumu."""
     creds = None
     if os.path.exists(TOKEN_FILE):
         try:
@@ -42,11 +41,9 @@ def get_drive_service():
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
-            # Saglabājam atjaunoto tokenu
             with open(TOKEN_FILE, 'w') as token:
                 token.write(creds.to_json())
         except Exception:
-            # Ja neizdodas atjaunot, dzēšam veco
             if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
             creds = None
 
@@ -122,7 +119,6 @@ def save_to_history(invoice_data):
 def handle_download(invoice_data, file_buffer, filename, mime_type):
     save_to_history(invoice_data)
     
-    # Pārbaudām, vai ir pieslēgums
     if get_drive_service():
         with st.spinner("Augšupielādē Google Drive..."):
             success = upload_to_drive(file_buffer, filename, mime_type)
@@ -131,7 +127,6 @@ def handle_download(invoice_data, file_buffer, filename, mime_type):
             else:
                 st.toast("⚠️ Kļūda saglabājot Drive", icon="❌")
     else:
-        # SALABOTA KĻŪDA: icon="Zw" nomainīts uz icon="⚠️"
         st.toast("Nav pieslēgts Google Drive (tikai lejupielādēts)", icon="⚠️")
 
 def main():
@@ -143,7 +138,6 @@ def main():
     # --- SĀNA JOSLA: 1. Dokumenta Dati ---
     st.sidebar.header("Rēķina iestatījumi")
 
-    # Dokumenta ID
     if 'doc_number_input' not in st.session_state:
         st.session_state.doc_number_input = next_number
 
@@ -162,7 +156,6 @@ def main():
     # --- SĀNA JOSLA: 2. Google Drive ---
     st.sidebar.subheader("Google Drive")
     
-    # JAUNS: Poga uz Google Drive mapi
     if GOOGLE_DRIVE_FOLDER_ID:
         drive_url = f"https://drive.google.com/drive/folders/{GOOGLE_DRIVE_FOLDER_ID}"
         st.sidebar.link_button("📂 Atvērt Google Drive mapi", drive_url)
@@ -177,20 +170,16 @@ def main():
     else:
         st.sidebar.warning("❌ Nav pieslēgts")
         
-        # --- MANUĀLĀ AUTORIZĀCIJA ---
         if os.path.exists(CREDENTIALS_FILE):
             flow = InstalledAppFlow.from_client_secrets_file(
                 CREDENTIALS_FILE, 
                 SCOPES, 
-                redirect_uri='urn:ietf:wg:oauth:2.0:oob' # Speciāls režīms bez servera
+                redirect_uri='urn:ietf:wg:oauth:2.0:oob'
             )
             
-            # 1. Ģenerējam saiti
             auth_url, _ = flow.authorization_url(prompt='consent')
-            
             st.sidebar.markdown(f"**[1. Klikšķini šeit, lai autorizētos Google]({auth_url})**")
             
-            # 2. Lauks koda ievadei
             auth_code = st.sidebar.text_input("2. Iekopē kodu šeit:")
             
             if st.sidebar.button("3. Apstiprināt kodu"):
@@ -214,21 +203,17 @@ def main():
     # --- SĀNA JOSLA: 3. Datu Pārvaldība ---
     st.sidebar.subheader("Datu pārvaldība")
 
-    # Inicializējam sesijas stāvokli apstiprinājumam, ja tas vēl nav
     if 'confirm_delete_history' not in st.session_state:
         st.session_state.confirm_delete_history = False
 
-    # 1. solis: Galvenā dzēšanas poga
     if st.sidebar.button("🗑️ Dzēst visu rēķinu vēsturi"):
         st.session_state.confirm_delete_history = True
 
-    # 2. solis: Apstiprinājuma loģika
     if st.session_state.confirm_delete_history:
         st.sidebar.error("Vai jūs patiešām vēlaties dzēst visu vēsturi? Šo darbību nevar atsaukt.")
         
         col_del_1, col_del_2 = st.sidebar.columns(2)
         
-        # Poga "Jā"
         if col_del_1.button("Jā, dzēst"):
             if os.path.exists(HISTORY_FILE):
                 try:
@@ -239,15 +224,12 @@ def main():
             else:
                 st.sidebar.warning("Vēstures fails neeksistē.")
             
-            # Atiestatām stāvokli un pārlādējam lapu
             st.session_state.confirm_delete_history = False
             st.rerun()
 
-        # Poga "Atcelt"
         if col_del_2.button("Atcelt"):
             st.session_state.confirm_delete_history = False
             st.rerun()
-    # ==========================================
     
     # --- GALVENAIS SATURS ---
     st.header("Klients")
@@ -309,7 +291,6 @@ def main():
         if not edited_df.empty:
             calc_df = edited_df.copy()
             
-            # Kārtojam pēc 'Secība' kolonnas pirms dokumenta ģenerēšanas
             if 'Secība' in calc_df.columns:
                 calc_df = calc_df.sort_values(by='Secība')
                 
