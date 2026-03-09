@@ -281,12 +281,16 @@ def main():
     st.header("Preces / Pakalpojumi")
     
     if 'items_df' not in st.session_state:
-        initial_data = [{"NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1, "CENA (EUR)": 4505.00}]
+        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1, "CENA (EUR)": 4505.00}]
         st.session_state.items_df = pd.DataFrame(initial_data)
         
     edited_df = st.data_editor(
         st.session_state.items_df, num_rows="dynamic", use_container_width=True,
-        column_config={"CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), "DAUDZUMS": st.column_config.NumberColumn(step=1)}
+        column_config={
+            "Secība": st.column_config.NumberColumn("Secība", step=1),
+            "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), 
+            "DAUDZUMS": st.column_config.NumberColumn(step=1)
+        }
     )
     
     # Aprēķini
@@ -303,6 +307,11 @@ def main():
     try:
         if not edited_df.empty:
             calc_df = edited_df.copy()
+            
+            # Kārtojam pēc 'Secība' kolonnas pirms dokumenta ģenerēšanas
+            if 'Secība' in calc_df.columns:
+                calc_df = calc_df.sort_values(by='Secība')
+                
             calc_df['DAUDZUMS'] = pd.to_numeric(calc_df['DAUDZUMS'], errors='coerce').fillna(0)
             calc_df['CENA (EUR)'] = pd.to_numeric(calc_df['CENA (EUR)'], errors='coerce').fillna(0)
             calc_df['KOPĀ (EUR)'] = calc_df['DAUDZUMS'] * calc_df['CENA (EUR)']
@@ -346,7 +355,10 @@ def main():
         st.error(f"Kļūda aprēķinos: {e}")
 
     st.markdown("---")
-    st.header("Paraksti")
+    st.header("Komentāri un Paraksti")
+    
+    comments = st.text_area("Papildus komentāri / piezīmes (tiks iekļauti dokumentā)", value="")
+    
     signatory_options = ["Adrians Stankevičs", "Rihards Ozoliņš", "Ēriks Ušackis", "Aleks Kristiāns Grīnbergs"]
     col_sig1, col_sig2 = st.columns(2)
     with col_sig1:
@@ -363,7 +375,8 @@ def main():
         'client_vat_no': st.session_state.client_data['vat_no'], 'items': [],
         'subtotal': fmt_curr(subtotal), 'vat': fmt_curr(vat), 'total': fmt_curr(total),
         'raw_total': total, 'raw_advance': advance_payment, 'advance_percent': advance_percent,
-        'amount_words': amount_words, 'signatory': full_signatory
+        'amount_words': amount_words, 'signatory': full_signatory,
+        'comments': comments
     }
     
     if not edited_df.empty:
