@@ -16,39 +16,46 @@ TEXT_COLOR = colors.black
 
 # --- Fontu ielāde ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Izmantojam stabilas saites no Google Fonts (Roboto lieliski atbalsta latviešu valodu)
 FONT_URLS = {
-    "DejaVuSans.ttf": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans.ttf",
-    "DejaVuSans-Bold.ttf": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Bold.ttf",
-    "DejaVuSans-Oblique.ttf": "https://raw.githubusercontent.com/dejavu-fonts/dejavu-fonts/master/ttf/DejaVuSans-Oblique.ttf"
+    "Roboto-Regular.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Regular.ttf",
+    "Roboto-Bold.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Bold.ttf",
+    "Roboto-Italic.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Italic.ttf"
 }
 
-# 1. Automātiski lejupielādē fontus, ja tie neeksistē (garantē latviešu burtu atbalstu)
+# 1. Automātiski lejupielādē fontus, ja tie neeksistē vai ir bojāti (mazāki par 10KB)
 for font_file, url in FONT_URLS.items():
     font_path = os.path.join(CURRENT_DIR, font_file)
-    if not os.path.exists(font_path):
+    if not os.path.exists(font_path) or os.path.getsize(font_path) < 10000:
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response, open(font_path, 'wb') as out_file:
-                out_file.write(response.read())
+            with urllib.request.urlopen(req) as response:
+                content = response.read()
+                # Saglabā tikai tad, ja tas ir pilnvērtīgs TTF fails
+                if len(content) > 10000: 
+                    with open(font_path, 'wb') as out_file:
+                        out_file.write(content)
         except Exception as e:
             print(f"Neizdevās lejupielādēt fontu: {e}")
 
 # 2. Reģistrē fontus
 try:
-    pdfmetrics.registerFont(TTFont('DejaVuSans', os.path.join(CURRENT_DIR, "DejaVuSans.ttf")))
-    REGULAR_FONT = 'DejaVuSans'
+    pdfmetrics.registerFont(TTFont('Roboto', os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")))
+    REGULAR_FONT = 'Roboto'
 except:
     REGULAR_FONT = 'Helvetica'
+    print("Brīdinājums: Neizdevās reģistrēt Roboto Regular fontu.")
     
 try:
-    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', os.path.join(CURRENT_DIR, "DejaVuSans-Bold.ttf")))
-    BOLD_FONT = 'DejaVuSans-Bold'
+    pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(CURRENT_DIR, "Roboto-Bold.ttf")))
+    BOLD_FONT = 'Roboto-Bold'
 except:
     BOLD_FONT = 'Helvetica-Bold'
     
 try:
-    pdfmetrics.registerFont(TTFont('DejaVuSans-Oblique', os.path.join(CURRENT_DIR, "DejaVuSans-Oblique.ttf")))
-    ITALIC_FONT = 'DejaVuSans-Oblique'
+    pdfmetrics.registerFont(TTFont('Roboto-Italic', os.path.join(CURRENT_DIR, "Roboto-Italic.ttf")))
+    ITALIC_FONT = 'Roboto-Italic'
 except:
     ITALIC_FONT = 'Helvetica-Oblique'
 
