@@ -86,7 +86,6 @@ def generate_docx(data):
     # Sender
     cell = table.cell(0, 0)
     p = cell.paragraphs[0]
-    # IZMAIŅAS ŠEIT:
     p.add_run("PIEGĀDĀTĀJS").bold = True
     p.add_run("\n")
     p.add_run("SIA Bratus").bold = True
@@ -199,7 +198,13 @@ def generate_docx(data):
     
     doc.add_paragraph()
     doc.add_paragraph().add_run("Papildus informācija:").bold = True
-    doc.add_paragraph()
+    
+    # KOMENTĀRU IEVAKTE (WORD)
+    comments = data.get('comments', '').strip()
+    if comments:
+        doc.add_paragraph(comments)
+    else:
+        doc.add_paragraph()
     
     # --- Signatures ---
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
