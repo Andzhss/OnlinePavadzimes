@@ -311,14 +311,14 @@ def generate_pdf(data):
     elements.append(HorizontalLine(thickness=0.2))
     elements.append(Spacer(1, 2*mm))
     
-    elements.append(Paragraph("<b>Papildus informācija:</b>", style_bold))
-    
-    # KOMENTĀRU IEVAKTE (PDF)
+    # KOMENTĀRU IEVAKTE ZEM VIRSRAKSTA (PDF)
     comments = data.get('comments', '').strip()
     if comments:
         comments_html = comments.replace('\n', '<br/>')
-        elements.append(Spacer(1, 2*mm))
-        elements.append(Paragraph(comments_html, style_normal))
+        # Saliek virsrakstu un komentāru vienā paragrāfā
+        elements.append(Paragraph(f"<b>Papildus informācija:</b><br/>{comments_html}", style_normal))
+    else:
+        elements.append(Paragraph("<b>Papildus informācija:</b>", style_bold))
         
     elements.append(Spacer(1, 10*mm))
     
