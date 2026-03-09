@@ -295,7 +295,6 @@ def generate_pdf(data):
         formatted_advance = fmt_curr(raw_advance)
         percent_val = int(round(data.get('advance_percent', 0)))
         
-        # IZMAIŅA: Izmantojam tiešu <font name=...> norādi, lai garantētu treknrakstu
         bold_text = f'<font name="{BOLD_FONT}">APMAKSĀJAMAIS AVANSS ({percent_val}%): {formatted_advance} €</font>'
         elements.append(Paragraph(bold_text, style_cell_right))
         elements.append(Spacer(1, 2*mm))
@@ -313,6 +312,14 @@ def generate_pdf(data):
     elements.append(Spacer(1, 2*mm))
     
     elements.append(Paragraph("<b>Papildus informācija:</b>", style_bold))
+    
+    # KOMENTĀRU IEVAKTE (PDF)
+    comments = data.get('comments', '').strip()
+    if comments:
+        comments_html = comments.replace('\n', '<br/>')
+        elements.append(Spacer(1, 2*mm))
+        elements.append(Paragraph(comments_html, style_normal))
+        
     elements.append(Spacer(1, 10*mm))
     
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
