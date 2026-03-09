@@ -21,10 +21,10 @@ def generate_docx(data):
         section.left_margin = Cm(2)
         section.right_margin = Cm(2)
         
-    # Styles
+    # Styles - nomainīts uz Arial drošai latviešu valodas saderībai
     style = doc.styles['Normal']
     font = style.font
-    font.name = 'DejaVu Serif'
+    font.name = 'Arial'
     font.size = Pt(10)
     
     # --- Header ---
@@ -173,13 +173,11 @@ def generate_docx(data):
         formatted_advance = fmt_curr(raw_advance)
         percent_val = int(round(data.get('advance_percent', 0)))
         
-        # Add table for bold totals at the bottom
         adv_table = doc.add_table(rows=1, cols=2)
         adv_table.autofit = False
         adv_table.columns[0].width = Cm(13)
         adv_table.columns[1].width = Cm(4)
         
-        # Advance To Pay
         c1 = adv_table.cell(0, 0)
         c2 = adv_table.cell(0, 1)
         p1 = c1.paragraphs[0]
@@ -197,7 +195,6 @@ def generate_docx(data):
     p.add_run(f"{prefix}{data.get('amount_words', '')}").italic = True
     
     doc.add_paragraph()
-    doc.add_paragraph()
     
     # KOMENTĀRU IEVAKTE ZEM VIRSRAKSTA (WORD)
     p_info = doc.add_paragraph()
@@ -205,7 +202,6 @@ def generate_docx(data):
     
     comments = data.get('comments', '').strip()
     if comments:
-        # Ieliek komentārus uzreiz jaunā rindā zem "Papildus informācija:"
         p_info.add_run(f"\n{comments}")
     else:
         p_info.add_run("\n")
