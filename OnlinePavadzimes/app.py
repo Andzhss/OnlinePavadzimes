@@ -131,7 +131,8 @@ def handle_download(invoice_data, file_buffer, filename, mime_type):
             else:
                 st.toast("⚠️ Kļūda saglabājot Drive", icon="❌")
     else:
-        st.toast("⚠️ Nav pieslēgts Google Drive (tikai lejupielādēts)", icon="Zw")
+        # SALABOTA KĻŪDA: icon="Zw" nomainīts uz icon="⚠️"
+        st.toast("Nav pieslēgts Google Drive (tikai lejupielādēts)", icon="⚠️")
 
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
