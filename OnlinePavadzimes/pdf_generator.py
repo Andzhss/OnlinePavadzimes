@@ -22,7 +22,7 @@ FONT_URLS = {
     "Roboto-Italic.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Italic.ttf"
 }
 
-# Automātiski lejupielādē fontus, ja tie neeksistē
+# Automātiski lejupielādē fontus, ja tie neeksistē (Ideāli strādā Streamlit Cloud)
 for font_file, url in FONT_URLS.items():
     font_path = os.path.join(CURRENT_DIR, font_file)
     if not os.path.exists(font_path):
@@ -33,7 +33,7 @@ for font_file, url in FONT_URLS.items():
         except Exception as e:
             print(f"Neizdevās lejupielādēt fontu: {e}")
 
-# Reģistrē fontus, ja tie ir veiksmīgi iegūti
+# Reģistrē fontus
 if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")):
     pdfmetrics.registerFont(TTFont('Roboto', os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")))
     REGULAR_FONT = 'Roboto'
@@ -50,7 +50,7 @@ if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")):
     else:
         ITALIC_FONT = 'Roboto'
 else:
-    # Fallback, ja lejupielāde neizdodas
+    # Fallback, ja neizdevās
     REGULAR_FONT = 'Helvetica'
     BOLD_FONT = 'Helvetica-Bold'
     ITALIC_FONT = 'Helvetica-Oblique'
@@ -324,7 +324,7 @@ def generate_pdf(data):
     elements.append(HorizontalLine(thickness=0.2))
     elements.append(Spacer(1, 2*mm))
     
-    # KOMENTĀRU IEVAKTE (PDF) - Tagad vienā paragrāfā ar "Papildus informācija"
+    # KOMENTĀRU IEVAKTE (PDF) - Kopā ar "Papildus informācija"
     comments = data.get('comments', '').strip()
     if comments:
         comments_html = comments.replace('\n', '<br/>')
