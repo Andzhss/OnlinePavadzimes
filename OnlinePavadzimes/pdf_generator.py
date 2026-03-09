@@ -6,6 +6,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_RIGHT, TA_LEFT, TA_CENTER
+import urllib.request
 import io
 import os
 
@@ -13,27 +14,43 @@ import os
 THEME_COLOR = colors.HexColor("#CDBF96")
 TEXT_COLOR = colors.black
 
-# --- Fontu iestatījumi ---
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
-FONT_BOLD_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-FONT_ITALIC_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf"
+# --- Fontu ielāde ---
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_URLS = {
+    "Roboto-Regular.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf",
+    "Roboto-Bold.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf",
+    "Roboto-Italic.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Italic.ttf"
+}
 
-if os.path.exists(FONT_PATH):
-    pdfmetrics.registerFont(TTFont('DejaVuSerif', FONT_PATH))
-    REGULAR_FONT = 'DejaVuSerif'
+# Automātiski lejupielādē fontus, ja tie neeksistē
+for font_file, url in FONT_URLS.items():
+    font_path = os.path.join(CURRENT_DIR, font_file)
+    if not os.path.exists(font_path):
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response, open(font_path, 'wb') as out_file:
+                out_file.write(response.read())
+        except Exception as e:
+            print(f"Neizdevās lejupielādēt fontu: {e}")
+
+# Reģistrē fontus, ja tie ir veiksmīgi iegūti
+if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")):
+    pdfmetrics.registerFont(TTFont('Roboto', os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")))
+    REGULAR_FONT = 'Roboto'
     
-    if os.path.exists(FONT_BOLD_PATH):
-        pdfmetrics.registerFont(TTFont('DejaVuSerif-Bold', FONT_BOLD_PATH))
-        BOLD_FONT = 'DejaVuSerif-Bold'
+    if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Bold.ttf")):
+        pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(CURRENT_DIR, "Roboto-Bold.ttf")))
+        BOLD_FONT = 'Roboto-Bold'
     else:
-        BOLD_FONT = 'DejaVuSerif'
+        BOLD_FONT = 'Roboto'
         
-    if os.path.exists(FONT_ITALIC_PATH):
-        pdfmetrics.registerFont(TTFont('DejaVuSerif-Italic', FONT_ITALIC_PATH))
-        ITALIC_FONT = 'DejaVuSerif-Italic'
+    if os.path.exists(os.path.join(CURRENT_DIR, "Roboto-Italic.ttf")):
+        pdfmetrics.registerFont(TTFont('Roboto-Italic', os.path.join(CURRENT_DIR, "Roboto-Italic.ttf")))
+        ITALIC_FONT = 'Roboto-Italic'
     else:
-        ITALIC_FONT = 'DejaVuSerif'
+        ITALIC_FONT = 'Roboto'
 else:
+    # Fallback, ja lejupielāde neizdodas
     REGULAR_FONT = 'Helvetica'
     BOLD_FONT = 'Helvetica-Bold'
     ITALIC_FONT = 'Helvetica-Oblique'
@@ -126,9 +143,8 @@ def generate_pdf(data):
     # ==========================================
     # 1. LOGO UN DOKUMENTA INFO
     # ==========================================
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     logo_filename = "BRATUS MELNS LOGO PNG.png"
-    logo_path = os.path.join(current_dir, logo_filename)
+    logo_path = os.path.join(CURRENT_DIR, logo_filename)
     
     if os.path.exists(logo_path):
         logo = RLImage(logo_path, width=35*mm, height=26*mm, kind='proportional') 
@@ -264,21 +280,19 @@ def generate_pdf(data):
     totals_table = Table(totals_data, colWidths=[90*mm, 50*mm, 30*mm])
     
     if doc_type == "Avansa rēķins":
-        # Avansa rēķinam - Viss REGULAR (ne-bold)
         totals_style_cmds = [
             ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
             ('TEXTCOLOR', (0,0), (-1,-1), TEXT_COLOR),
-            ('FONTNAME', (0,0), (-1,-1), REGULAR_FONT), # Viss Regular
+            ('FONTNAME', (0,0), (-1,-1), REGULAR_FONT),
         ]
     else:
-        # Pavadzīmei/Rēķinam - Virsraksti un beigas Bold
         totals_style_cmds = [
             ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
             ('TEXTCOLOR', (0,0), (-1,-1), TEXT_COLOR),
-            ('FONTNAME', (1,0), (1,2), BOLD_FONT),    # Labels Bold
-            ('FONTNAME', (2,0), (2,2), REGULAR_FONT), # Values Regular
-            ('FONTNAME', (1,2), (2,2), BOLD_FONT),    # Total Label Bold
-            ('FONTNAME', (2,2), (2,2), BOLD_FONT),    # Total Value Bold
+            ('FONTNAME', (1,0), (1,2), BOLD_FONT),    
+            ('FONTNAME', (2,0), (2,2), REGULAR_FONT), 
+            ('FONTNAME', (1,2), (2,2), BOLD_FONT),    
+            ('FONTNAME', (2,2), (2,2), BOLD_FONT),    
         ]
     
     totals_table.setStyle(TableStyle(totals_style_cmds))
@@ -289,7 +303,6 @@ def generate_pdf(data):
     # ==========================================
     elements.append(Spacer(1, 5*mm))
     
-    # Avansa tabula (ja ir)
     if doc_type == "Avansa rēķins":
         raw_advance = data.get('raw_advance', 0.0)
         formatted_advance = fmt_curr(raw_advance)
@@ -311,11 +324,10 @@ def generate_pdf(data):
     elements.append(HorizontalLine(thickness=0.2))
     elements.append(Spacer(1, 2*mm))
     
-    # KOMENTĀRU IEVAKTE ZEM VIRSRAKSTA (PDF)
+    # KOMENTĀRU IEVAKTE (PDF) - Tagad vienā paragrāfā ar "Papildus informācija"
     comments = data.get('comments', '').strip()
     if comments:
         comments_html = comments.replace('\n', '<br/>')
-        # Saliek virsrakstu un komentāru vienā paragrāfā
         elements.append(Paragraph(f"<b>Papildus informācija:</b><br/>{comments_html}", style_normal))
     else:
         elements.append(Paragraph("<b>Papildus informācija:</b>", style_bold))
