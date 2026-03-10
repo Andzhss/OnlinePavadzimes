@@ -23,7 +23,9 @@ TEST_HISTORY_FILE = "test_invoice_history.json"
 CREDENTIALS_FILE = "credentials.json"
 TOKEN_FILE = "token.json"
 
+# !!! IELĪMĒ SAVU MAPES ID ŠEIT !!!
 GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9" 
+
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
 # --- Google Drive Funkcijas ---
@@ -68,6 +70,7 @@ def upload_to_drive(file_buffer, filename, mime_type):
         st.error(f"❌ Kļūda Google Drive: {e}")
         return False
 
+# --- Vēstures Funkcijas (Īstā un Testa) ---
 def load_history(filepath=HISTORY_FILE):
     if os.path.exists(filepath):
         try:
@@ -120,7 +123,7 @@ def save_to_history_generic(invoice_data, filepath):
 def handle_download(invoice_data, file_buffer, filename, mime_type, is_proforma):
     if is_proforma:
         save_to_history_generic(invoice_data, TEST_HISTORY_FILE)
-        st.toast("✅ Proformas dokuments saglabāts testa vēsturē", icon="💾")
+        st.toast("✅ Proformas dokuments saglabāts lokālajā testa vēsturē", icon="💾")
     else:
         save_to_history_generic(invoice_data, HISTORY_FILE)
         if get_drive_service():
@@ -128,8 +131,11 @@ def handle_download(invoice_data, file_buffer, filename, mime_type, is_proforma)
                 success = upload_to_drive(file_buffer, filename, mime_type)
                 if success:
                     st.toast(f"✅ Saglabāts Drive: {filename}", icon="☁️")
+                else:
+                    st.toast("⚠️ Kļūda saglabājot Drive", icon="❌")
         else:
-            st.toast("Nav pieslēgts Google Drive", icon="⚠️")
+            st.toast("Nav pieslēgts Google Drive (tikai lejupielādēts)", icon="⚠️")
+
 
 def load_test_invoice(selected_test):
     doc_num_str = selected_test.get('doc_id', '').split()[-1]
@@ -145,21 +151,20 @@ def load_test_invoice(selected_test):
     
     items_list = []
     for i, item in enumerate(selected_test.get('items', [])):
-        qty = item.get('raw_qty', float(item.get('qty', 0)))
-        price = item.get('raw_price', 0.0)
         items_list.append({
             "Secība": i + 1,
             "NOSAUKUMS": item.get('name', ''),
             "Mērvienība": item.get('unit', ''),
-            "DAUDZUMS": qty,
-            "CENA (EUR)": price,
-            "Cena kopā (EUR)": qty * price
+            "DAUDZUMS": item.get('raw_qty', float(item.get('qty', 0))),
+            "CENA (EUR)": item.get('raw_price', 0.0)
         })
     st.session_state.items_df = pd.DataFrame(items_list)
     
+    # Atpazīstam proformas nosaukumus un ieliekam standarta
     loaded_type = selected_test.get('doc_type', 'Pavadzīme')
-    if "Proformas" in loaded_type:
-        loaded_type = loaded_type.replace("Proformas ", "")
+    if loaded_type == "Proformas pavadzīme": loaded_type = "Pavadzīme"
+    elif loaded_type == "Proformas rēķins": loaded_type = "Rēķins"
+    elif loaded_type == "Proformas avansa rēķins": loaded_type = "Avansa rēķins"
         
     st.session_state.loaded_doc_type = loaded_type
     st.session_state.loaded_comments = selected_test.get('comments', '')
@@ -169,21 +174,28 @@ def load_test_invoice(selected_test):
     except:
         pass
 
+
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
+
     history = load_history(HISTORY_FILE)
     next_number = get_next_invoice_number(history)
 
+    # --- SĀNA JOSLA: 1. Dokumenta Dati ---
     st.sidebar.header("Rēķina iestatījumi")
+
     if 'doc_number_input' not in st.session_state:
         st.session_state.doc_number_input = next_number
 
-    doc_number_input = st.sidebar.number_input("Dokumenta Nr.", min_value=1, value=st.session_state.doc_number_input, step=1)
+    doc_number_input = st.sidebar.number_input(
+        "Dokumenta Nr.", min_value=1, value=st.session_state.doc_number_input, step=1
+    )
     doc_id = f"BR {doc_number_input:04d}" 
     st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
     
     default_doc_date = st.session_state.get('loaded_doc_date', datetime.date.today())
     doc_date = st.sidebar.date_input("Datums", default_doc_date)
+    
     default_due_date = st.session_state.get('loaded_due_date', doc_date + datetime.timedelta(days=14))
     due_date = st.sidebar.date_input("Apmaksāt līdz", default_due_date)
     
@@ -194,40 +206,114 @@ def main():
     doc_type = st.sidebar.selectbox("Dokumenta tips", doc_types, index=dt_index)
     
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🔄 Testa ielāde")
+
+    # --- SĀNA JOSLA: 2. Testa Pavadzīmju Ielāde ---
+    st.sidebar.subheader("🔄 Testa pavadzīmju ielāde")
     test_history = load_history(TEST_HISTORY_FILE)
     if test_history:
-        test_options = { f"{t['doc_id']} - {t.get('client_name','')}": t for t in reversed(test_history) }
+        test_options = { f"{t['doc_id']} - {t.get('client_name','')} ({t.get('date','')})": t for t in reversed(test_history) }
         selected_test_label = st.sidebar.selectbox("Izvēlies testa dokumentu", list(test_options.keys()))
         if st.sidebar.button("Ielādēt izvēlēto"):
             load_test_invoice(test_options[selected_test_label])
             st.rerun()
+    else:
+        st.sidebar.info("Nav saglabātu testa pavadzīmju.")
 
+    st.sidebar.markdown("---")
+
+    # --- SĀNA JOSLA: 3. Google Drive ---
+    st.sidebar.subheader("Google Drive")
+    if GOOGLE_DRIVE_FOLDER_ID:
+        drive_url = f"https://drive.google.com/drive/folders/{GOOGLE_DRIVE_FOLDER_ID}"
+        st.sidebar.link_button("📂 Atvērt Google Drive mapi", drive_url)
+
+    service = get_drive_service()
+    if service:
+        st.sidebar.success("✅ Pieslēgts")
+        if st.sidebar.button("Atslēgties"):
+            if os.path.exists(TOKEN_FILE): os.remove(TOKEN_FILE)
+            st.rerun()
+    else:
+        st.sidebar.warning("❌ Nav pieslēgts")
+        if os.path.exists(CREDENTIALS_FILE):
+            flow = InstalledAppFlow.from_client_secrets_file(
+                CREDENTIALS_FILE, SCOPES, redirect_uri='urn:ietf:wg:oauth:2.0:oob'
+            )
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            st.sidebar.markdown(f"**[1. Klikšķini šeit, lai autorizētos Google]({auth_url})**")
+            auth_code = st.sidebar.text_input("2. Iekopē kodu šeit:")
+            if st.sidebar.button("3. Apstiprināt kodu"):
+                if auth_code:
+                    try:
+                        flow.fetch_token(code=auth_code)
+                        creds = flow.credentials
+                        with open(TOKEN_FILE, 'w') as token:
+                            token.write(creds.to_json())
+                        st.success("Veiksmīgi pieslēgts!")
+                        st.rerun()
+                    except Exception as e:
+                        st.sidebar.error(f"Kļūda: {e}")
+                else:
+                    st.sidebar.error("Lūdzu ievadi kodu!")
+        else:
+            st.sidebar.error("Trūkst credentials.json faila!")
+
+    st.sidebar.markdown("---")
+    
+    # --- SĀNA JOSLA: 4. Datu Pārvaldība ---
+    st.sidebar.subheader("Datu pārvaldība")
+    if 'confirm_delete_history' not in st.session_state:
+        st.session_state.confirm_delete_history = False
+
+    if st.sidebar.button("🗑️ Dzēst visu rēķinu vēsturi"):
+        st.session_state.confirm_delete_history = True
+
+    if st.session_state.confirm_delete_history:
+        st.sidebar.error("Vai tiešām dzēst visu vēsturi? Nevar atsaukt.")
+        col_del_1, col_del_2 = st.sidebar.columns(2)
+        if col_del_1.button("Jā, dzēst"):
+            if os.path.exists(HISTORY_FILE): os.remove(HISTORY_FILE)
+            if os.path.exists(TEST_HISTORY_FILE): os.remove(TEST_HISTORY_FILE)
+            st.session_state.confirm_delete_history = False
+            st.rerun()
+        if col_del_2.button("Atcelt"):
+            st.session_state.confirm_delete_history = False
+            st.rerun()
+    
+    # --- GALVENAIS SATURS ---
     st.header("Klients")
     col1, col2 = st.columns([1, 1])
+    
     if 'client_data' not in st.session_state:
         st.session_state.client_data = {'name': '', 'address': '', 'reg_no': '', 'vat_no': ''}
         
     with col1:
         lursoft_url = st.text_input("Lursoft saite")
-        if st.button("Ielādēt datus no Lursoft") and lursoft_url:
-            scraped = scrape_lursoft(lursoft_url)
-            if scraped:
-                st.session_state.client_data.update(scraped)
-                st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no', '')
-                st.rerun()
+        scrape_btn = st.button("Ielādēt datus no Lursoft")
+        if scrape_btn and lursoft_url:
+            with st.spinner("Datu ielasīšana..."):
+                scraped = scrape_lursoft(lursoft_url)
+                if scraped:
+                    if scraped.get('name'): st.session_state.client_data['name'] = scraped.get('name')
+                    if scraped.get('address'): st.session_state.client_data['address'] = scraped.get('address')
+                    if scraped.get('reg_no'): st.session_state.client_data['reg_no'] = scraped.get('reg_no')
+                    st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no')
+                    st.success("Dati veiksmīgi ielasīti!")
+                    st.rerun()
+                else:
+                    st.error("Neizdevās ielasīt datus.")
     
     with col2:
-        st.session_state.client_data['name'] = st.text_input("Nosaukums", st.session_state.client_data['name'])
-        st.session_state.client_data['address'] = st.text_input("Adrese", st.session_state.client_data['address'])
-        st.session_state.client_data['reg_no'] = st.text_input("Reģ. Nr.", st.session_state.client_data['reg_no'])
-        st.session_state.client_data['vat_no'] = st.text_input("PVN Nr.", st.session_state.client_data['vat_no'])
+        st.session_state.client_data['name'] = st.text_input("Nosaukums", value=st.session_state.client_data['name'])
+        st.session_state.client_data['address'] = st.text_input("Adrese", value=st.session_state.client_data['address'])
+        st.session_state.client_data['reg_no'] = st.text_input("Reģ. Nr.", value=st.session_state.client_data['reg_no'])
+        st.session_state.client_data['vat_no'] = st.text_input("PVN Nr.", value=st.session_state.client_data['vat_no'])
 
     st.markdown("---")
     st.header("Preces / Pakalpojumi")
     
     if 'items_df' not in st.session_state:
-        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta", "Mērvienība": "Gab.", "DAUDZUMS": 1.0, "CENA (EUR)": 4505.00, "Cena kopā (EUR)": 4505.00}]
+        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1, "CENA (EUR)": 4505.00}]
         st.session_state.items_df = pd.DataFrame(initial_data)
         
     edited_df = st.data_editor(
@@ -235,39 +321,75 @@ def main():
         column_config={
             "Secība": st.column_config.NumberColumn("Secība", step=1),
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), 
-            "DAUDZUMS": st.column_config.NumberColumn(format="%.2f", step=0.01),
-            "Cena kopā (EUR)": st.column_config.NumberColumn(format="%.2f", disabled=True)
+            "DAUDZUMS": st.column_config.NumberColumn(step=1)
         }
     )
+    
+    subtotal, vat, total = 0.0, 0.0, 0.0
+    amount_words = ""
+    advance_payment, advance_percent = 0.0, 0.0
     
     def fmt_curr(val):
         return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
 
-    subtotal, vat, total = 0.0, 0.0, 0.0
-    if not edited_df.empty:
-        calc_df = edited_df.copy()
-        calc_df['DAUDZUMS'] = pd.to_numeric(calc_df['DAUDZUMS'], errors='coerce').fillna(0)
-        calc_df['CENA (EUR)'] = pd.to_numeric(calc_df['CENA (EUR)'], errors='coerce').fillna(0)
-        calc_df['Cena kopā (EUR)'] = calc_df['DAUDZUMS'] * calc_df['CENA (EUR)']
-        
-        subtotal = calc_df['Cena kopā (EUR)'].sum()
-        vat = subtotal * 0.21
-        total = subtotal + vat
-        
-        t_col1, t_col2 = st.columns([3, 1])
-        with t_col2:
-            st.markdown(f"**KOPĀ:** € {fmt_curr(subtotal)}")
-            st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
-            st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
-        amount_words = money_to_words_lv(total)
-        st.info(f"**Summa vārdiem:** {amount_words}")
+    try:
+        if not edited_df.empty:
+            calc_df = edited_df.copy()
+            if 'Secība' in calc_df.columns:
+                calc_df = calc_df.sort_values(by='Secība')
+                
+            calc_df['DAUDZUMS'] = pd.to_numeric(calc_df['DAUDZUMS'], errors='coerce').fillna(0)
+            calc_df['CENA (EUR)'] = pd.to_numeric(calc_df['CENA (EUR)'], errors='coerce').fillna(0)
+            calc_df['KOPĀ (EUR)'] = calc_df['DAUDZUMS'] * calc_df['CENA (EUR)']
+            
+            subtotal = calc_df['KOPĀ (EUR)'].sum()
+            vat = subtotal * 0.21
+            total = subtotal + vat
+            
+            if doc_type == "Avansa rēķins":
+                st.markdown("### Avansa iestatījumi")
+                calc_method = st.radio("Aprēķina veids:", ["Ciparos (EUR)", "Procentos (%)"], horizontal=True)
+                
+                if calc_method == "Ciparos (EUR)":
+                    advance_payment = st.number_input("Summa (EUR)", 0.0, total, total, 10.0)
+                    advance_percent = (advance_payment / total) * 100 if total > 0 else 0
+                else:
+                    advance_percent = st.number_input("Procenti (%)", 0.0, 100.0, 50.0, 5.0)
+                    advance_payment = total * (advance_percent / 100)
+                
+                t_col1, t_col2 = st.columns([3, 1])
+                with t_col2:
+                    st.markdown(f"Kopējā pasūtījuma summa: € {fmt_curr(total)}")
+                    st.markdown(f"**APMAKSĀJAMAIS AVANSS ({int(round(advance_percent))}%):** € {fmt_curr(advance_payment)}")
+                amount_words = money_to_words_lv(advance_payment)
+                st.info(f"**Summa vārdiem (Avanss):** {amount_words}")
+            else:
+                advance_payment = total
+                t_col1, t_col2 = st.columns([3, 1])
+                with t_col2:
+                    st.markdown(f"**KOPĀ:** € {fmt_curr(subtotal)}")
+                    st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
+                    st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
+                amount_words = money_to_words_lv(total)
+                st.info(f"**Summa vārdiem:** {amount_words}")
+            
+    except Exception as e:
+        st.error(f"Kļūda aprēķinos: {e}")
 
     st.markdown("---")
-    comments = st.text_area("Papildus komentāri", st.session_state.get('loaded_comments', ''))
+    st.header("Komentāri un Paraksti")
+    
+    default_comments = st.session_state.get('loaded_comments', '')
+    comments = st.text_area("Papildus komentāri / piezīmes (tiks iekļauti dokumentā)", value=default_comments)
     
     signatory_options = ["Adrians Stankevičs", "Rihards Ozoliņš", "Ēriks Ušackis", "Aleks Kristiāns Grīnbergs"]
-    selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options)
-    full_signatory = f"SIA Bratus valdes loceklis {selected_signatory}"
+    col_sig1, col_sig2 = st.columns(2)
+    with col_sig1:
+        selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options, key="sig_select")
+    with col_sig2:
+        signatory_title = st.text_input("Amats", "valdes loceklis", key="sig_title")
+    full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
+    st.caption(f"Paraksta laukā būs: {full_signatory}")
     
     invoice_data = {
         'doc_type': doc_type, 'doc_id': doc_id, 'date': doc_date.strftime("%d.%m.%Y"),
@@ -275,27 +397,84 @@ def main():
         'client_address': st.session_state.client_data['address'], 'client_reg_no': st.session_state.client_data['reg_no'],
         'client_vat_no': st.session_state.client_data['vat_no'], 'items': [],
         'subtotal': fmt_curr(subtotal), 'vat': fmt_curr(vat), 'total': fmt_curr(total),
-        'amount_words': amount_words, 'signatory': full_signatory, 'comments': comments
+        'raw_total': total, 'raw_advance': advance_payment, 'advance_percent': advance_percent,
+        'amount_words': amount_words, 'signatory': full_signatory,
+        'comments': comments
     }
     
-    for _, row in calc_df.iterrows():
-        invoice_data['items'].append({
-            'name': row['NOSAUKUMS'], 'unit': row['Mērvienība'],
-            'qty': f"{row['DAUDZUMS']:.2f}", 'price': fmt_curr(row['CENA (EUR)']),
-            'total': fmt_curr(row['Cena kopā (EUR)']),
-            'raw_qty': float(row['DAUDZUMS']), 'raw_price': float(row['CENA (EUR)'])
-        })
+    if not edited_df.empty:
+        for index, row in calc_df.iterrows():
+            invoice_data['items'].append({
+                'name': row.get('NOSAUKUMS', ''), 'unit': row.get('Mērvienība', ''),
+                'qty': str(row.get('DAUDZUMS', 0)), 'price': fmt_curr(row.get('CENA (EUR)', 0)),
+                'total': fmt_curr(row.get('KOPĀ (EUR)', 0)),
+                'raw_qty': float(row.get('DAUDZUMS', 0)),
+                'raw_price': float(row.get('CENA (EUR)', 0))
+            })
 
-    is_proforma = st.toggle("📝 Ģenerēt kā Proformas dokumentu")
-    if is_proforma: invoice_data['doc_type'] = f"Proformas {doc_type}"
+    st.markdown("---")
+    
+    # === POGU UN LEJUPIELĀDES SADAĻA ===
+    st.markdown("### Lejupielāde un Arhivēšana")
+    
+    is_proforma = st.toggle("📝 Ģenerēt kā Proformas (testa) dokumentu", value=False, help="Ja ieslēgts: Dokuments sauksies 'Proformas...', saglabāsies TIKAI testa vēsturē un NETIKS augšupielādēts Google Drive.")
+
+    # Ja toggle ir aktīvs, nomainām nosaukumu pirms ģenerēšanas
+    if is_proforma:
+        if doc_type == "Pavadzīme":
+            invoice_data['doc_type'] = "Proformas pavadzīme"
+        elif doc_type == "Rēķins":
+            invoice_data['doc_type'] = "Proformas rēķins"
+        elif doc_type == "Avansa rēķins":
+            invoice_data['doc_type'] = "Proformas avansa rēķins"
             
     d_col1, d_col2 = st.columns(2)
-    with d_col1:
+    
+    # 1. PDF poga
+    try:
         pdf_file = generate_pdf(invoice_data)
-        st.download_button("📄 Lejupielādēt PDF", pdf_file, f"{doc_id}.pdf", "application/pdf", on_click=handle_download, args=(invoice_data, pdf_file, f"{doc_id}.pdf", "application/pdf", is_proforma))
-    with d_col2:
+        file_name_pdf = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf"
+        
+        with d_col1:
+            st.download_button(
+                label="📄 Lejupielādēt PDF",
+                data=pdf_file,
+                file_name=file_name_pdf,
+                mime="application/pdf",
+                on_click=handle_download,
+                args=(invoice_data, pdf_file, file_name_pdf, "application/pdf", is_proforma)
+            )
+    except Exception as e:
+        st.error(f"Kļūda PDF: {e}")
+        
+    # 2. WORD poga
+    try:
         docx_file = generate_docx(invoice_data)
-        st.download_button("📝 Lejupielādēt Word", docx_file, f"{doc_id}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", on_click=handle_download, args=(invoice_data, docx_file, f"{doc_id}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", is_proforma))
+        file_name_docx = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx"
+        
+        with d_col2:
+            st.download_button(
+                label="📝 Lejupielādēt Word",
+                data=docx_file,
+                file_name=file_name_docx,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                on_click=handle_download,
+                args=(invoice_data, docx_file, file_name_docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", is_proforma)
+            )
+    except Exception as e:
+        st.error(f"Kļūda Word: {e}")
+
+    st.markdown("---")
+    with st.expander("🗄️ Rēķinu vēsture (Izrakstītie)", expanded=False):
+        if history:
+            hist_df = pd.DataFrame(history)
+            display_cols = ['doc_id', 'date', 'client_name', 'doc_type', 'total', 'created_at']
+            rename_map = {'doc_id': 'Nr.', 'date': 'Datums', 'client_name': 'Klients', 
+                          'doc_type': 'Tips', 'total': 'Summa (EUR)', 'created_at': 'Izveidots'}
+            valid_cols = [c for c in display_cols if c in hist_df.columns]
+            st.dataframe(hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), use_container_width=True)
+        else:
+            st.info("Vēsture ir tukša.")
 
 if __name__ == "__main__":
     main()
