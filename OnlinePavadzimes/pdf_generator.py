@@ -242,8 +242,10 @@ def generate_pdf(data):
             items.append({'name': '', 'unit': '', 'qty': '', 'price': '', 'total': ''})
 
     for item in items:
+        seq_num = item.get('seq', '')
+        name_str = f"{seq_num}. {item['name']}" if seq_num else item['name']
         table_data.append([
-            Paragraph(item['name'], style_cell_left),
+            Paragraph(name_str, style_cell_left),
             Paragraph(item['unit'], style_cell_center),
             Paragraph(str(item['qty']), style_cell_center),
             Paragraph(item['price'], style_cell_right),

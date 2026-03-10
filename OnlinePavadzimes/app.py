@@ -175,9 +175,35 @@ def load_test_invoice(selected_test):
         pass
 
 
-def main():
-    st.title("SIA BRATUS Rēķinu Ģenerators")
 
+def load_presets():
+    if os.path.exists("presets.csv"):
+        return pd.read_csv("presets.csv")
+    return pd.DataFrame(columns=["NOSAUKUMS", "Mērvienība", "CENA (EUR)"])
+
+def save_presets(df):
+    df.to_csv("presets.csv", index=False)
+
+def render_presets_app():
+    st.header("Produktu un Pakalpojumu Sagataves")
+    st.write("Šeit varat pievienot, labot un dzēst biežāk izmantotos produktus. Izmaiņas saglabāsies automātiski, nospiežot pogu.")
+
+    presets_df = load_presets()
+    edited_presets = st.data_editor(
+        presets_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "CENA (EUR)": st.column_config.NumberColumn(format="%.2f", step=0.01)
+        }
+    )
+
+    if st.button("💾 Saglabāt izmaiņas sagatavēs"):
+        save_presets(edited_presets)
+        st.success("Sagataves veiksmīgi saglabātas!")
+        st.rerun()
+
+def render_invoice_app():
     history = load_history(HISTORY_FILE)
     next_number = get_next_invoice_number(history)
 
@@ -313,19 +339,50 @@ def main():
     st.header("Preces / Pakalpojumi")
     
     if 'items_df' not in st.session_state:
-        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1.00, "CENA (EUR)": 4505.00}]
+        initial_data = [{"NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1.00, "CENA (EUR)": 4505.00}]
+        # Secības kolonnu vairs nelietosim tabulā
         st.session_state.items_df = pd.DataFrame(initial_data)
         
+        # Jau ielādētās vecās sesijas var saturēt "Secība" kolonnu - izdzēšam to, lai nerādītos.
+        if "Secība" in st.session_state.items_df.columns:
+            st.session_state.items_df = st.session_state.items_df.drop(columns=["Secība"])
+
+    # --- SAGATAVJU PIEVIENOŠANA ---
+    st.subheader("Pievienot no sagatavēm")
+    presets_df = load_presets()
+    if not presets_df.empty:
+        p_col1, p_col2, p_col3 = st.columns([3, 1, 1])
+        with p_col1:
+            preset_options = presets_df['NOSAUKUMS'].tolist()
+            selected_preset_name = st.selectbox("Izvēlieties produktu", preset_options)
+        with p_col2:
+            preset_qty = st.number_input("Daudzums", min_value=0.01, value=1.00, step=0.01)
+        with p_col3:
+            st.write("") # Spacer for vertical alignment
+            st.write("")
+            if st.button("➕ Pievienot tabulai"):
+                selected_row = presets_df[presets_df['NOSAUKUMS'] == selected_preset_name].iloc[0]
+                new_item = {
+                    "NOSAUKUMS": selected_row['NOSAUKUMS'],
+                    "Mērvienība": selected_row['Mērvienība'],
+                    "DAUDZUMS": preset_qty,
+                    "CENA (EUR)": selected_row['CENA (EUR)']
+                }
+                st.session_state.items_df = pd.concat([st.session_state.items_df, pd.DataFrame([new_item])], ignore_index=True)
+                st.rerun()
+    else:
+        st.info("Sagatavju saraksts ir tukšs. Pievienojiet tos sānu izvēlnes sadaļā 'Produktu sagataves'.")
+
     # Aprēķinām "Cena kopā (EUR)", lai tā parādītos tabulā katru reizi, kad lapa tiek pārzīmēta
     display_df = st.session_state.items_df.copy()
     display_df['DAUDZUMS'] = pd.to_numeric(display_df['DAUDZUMS'], errors='coerce').fillna(0)
     display_df['CENA (EUR)'] = pd.to_numeric(display_df['CENA (EUR)'], errors='coerce').fillna(0)
     display_df['Cena kopā (EUR)'] = display_df['DAUDZUMS'] * display_df['CENA (EUR)']
 
+    # Atļaujam rindu pārkārtošanu (Drag & Drop), izmantojot Streamlit noklusēto indeksu
     edited_df = st.data_editor(
-        display_df, num_rows="dynamic", use_container_width=True,
+        display_df, num_rows="dynamic", use_container_width=True, hide_index=False,
         column_config={
-            "Secība": st.column_config.NumberColumn("Secība", step=1),
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), 
             "DAUDZUMS": st.column_config.NumberColumn(format="%.2f", step=0.01),
             "Cena kopā (EUR)": st.column_config.NumberColumn("Cena kopā (EUR)", disabled=True, format="%.2f")
@@ -353,8 +410,8 @@ def main():
     try:
         if not edited_df.empty:
             calc_df = edited_df.copy()
-            if 'Secība' in calc_df.columns:
-                calc_df = calc_df.sort_values(by='Secība')
+            # Mēs vairs nesakārtojam pēc vecās 'Secība' kolonnas, jo tagad to nosaka rindas secība (Drag & Drop) un indekss
+            # Tāpēc 'Secība' šeit vairs nav vajadzīga
                 
             calc_df['DAUDZUMS'] = pd.to_numeric(calc_df['DAUDZUMS'], errors='coerce').fillna(0)
             calc_df['CENA (EUR)'] = pd.to_numeric(calc_df['CENA (EUR)'], errors='coerce').fillna(0)
@@ -446,8 +503,11 @@ def main():
     }
     
     if not edited_df.empty:
+        # iterrows saglabā rindu kārtību, tādēļ mēs varam veidot "Secība" numuru pievienošanas brīdī.
         for index, row in calc_df.iterrows():
+            # Ievietojam seq, lai ģeneratori zinātu rindas numuru (piemēram Word dokumentā/PDF), ja tas joprojām ir vajadzīgs tabulā
             invoice_data['items'].append({
+                'seq': len(invoice_data['items']) + 1,
                 'name': row.get('NOSAUKUMS', ''), 'unit': row.get('Mērvienība', ''),
                 'qty': str(row.get('DAUDZUMS', 0)), 'price': fmt_curr(row.get('CENA (EUR)', 0)),
                 'total': fmt_curr(row.get('KOPĀ (EUR)', 0)),
@@ -518,6 +578,17 @@ def main():
             st.dataframe(hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), use_container_width=True)
         else:
             st.info("Vēsture ir tukša.")
+
+
+def main():
+    st.title("SIA BRATUS Rēķinu Ģenerators")
+    tab_invoice, tab_presets = st.tabs(["📄 Rēķina izveide", "⚙️ Produktu sagataves"])
+
+    with tab_invoice:
+        render_invoice_app()
+
+    with tab_presets:
+        render_presets_app()
 
 if __name__ == "__main__":
     main()

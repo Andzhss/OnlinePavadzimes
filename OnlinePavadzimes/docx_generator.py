@@ -160,7 +160,8 @@ def generate_docx(data):
             
     for item in items:
         row_cells = table.add_row().cells
-        row_cells[0].text = item['name']
+        seq_num = item.get('seq', '')
+        row_cells[0].text = f"{seq_num}. {item['name']}" if seq_num else item['name']
         row_cells[1].text = item['unit']
         row_cells[2].text = str(item['qty'])
         row_cells[3].text = str(item['price'])
