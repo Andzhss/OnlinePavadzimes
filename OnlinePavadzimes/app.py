@@ -313,18 +313,35 @@ def main():
     st.header("Preces / Pakalpojumi")
     
     if 'items_df' not in st.session_state:
-        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1, "CENA (EUR)": 4505.00}]
+        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1.00, "CENA (EUR)": 4505.00}]
         st.session_state.items_df = pd.DataFrame(initial_data)
         
+    # Aprēķinām "Cena kopā (EUR)", lai tā parādītos tabulā katru reizi, kad lapa tiek pārzīmēta
+    display_df = st.session_state.items_df.copy()
+    display_df['DAUDZUMS'] = pd.to_numeric(display_df['DAUDZUMS'], errors='coerce').fillna(0)
+    display_df['CENA (EUR)'] = pd.to_numeric(display_df['CENA (EUR)'], errors='coerce').fillna(0)
+    display_df['Cena kopā (EUR)'] = display_df['DAUDZUMS'] * display_df['CENA (EUR)']
+
     edited_df = st.data_editor(
-        st.session_state.items_df, num_rows="dynamic", use_container_width=True,
+        display_df, num_rows="dynamic", use_container_width=True,
         column_config={
             "Secība": st.column_config.NumberColumn("Secība", step=1),
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), 
-            "DAUDZUMS": st.column_config.NumberColumn(step=1)
+            "DAUDZUMS": st.column_config.NumberColumn(format="%.2f", step=0.01),
+            "Cena kopā (EUR)": st.column_config.NumberColumn("Cena kopā (EUR)", disabled=True, format="%.2f")
         }
     )
     
+    # Atjauninām st.session_state.items_df bez "Cena kopā (EUR)", lai piefiksētu lietotāja veiktās izmaiņas.
+    # Tas ļaus st.data_editor() automātiski atjaunoties pēc šūnas rediģēšanas, jo streamlit
+    # pārzīmēs lapu un 'Cena kopā (EUR)' tiks pārrēķināta sākumā, ja vērtības atšķiras.
+    updated_items_df = edited_df.drop(columns=['Cena kopā (EUR)'], errors='ignore')
+
+    # Ja lietotājs pievienojis rindu, nomainījis daudzumu vai cenu, mēs to saglabājam un liekam pārzīmēt lapu
+    if not updated_items_df.equals(st.session_state.items_df):
+        st.session_state.items_df = updated_items_df
+        st.rerun()
+
     subtotal, vat, total = 0.0, 0.0, 0.0
     amount_words = ""
     advance_payment, advance_percent = 0.0, 0.0
