@@ -337,6 +337,8 @@ def main():
     # pārzīmēs lapu un 'Cena kopā (EUR)' tiks pārrēķināta sākumā, ja vērtības atšķiras.
     updated_items_df = edited_df.drop(columns=['Cena kopā (EUR)'], errors='ignore')
 
+    # Poga lapas pārzīmēšanai un jaunās summas atjaunošanai
+    if st.button("🔄 Pārrēķināt summas"):
     # Ja lietotājs pievienojis rindu, nomainījis daudzumu vai cenu, mēs to saglabājam un liekam pārzīmēt lapu
     if not updated_items_df.equals(st.session_state.items_df):
         st.session_state.items_df = updated_items_df
