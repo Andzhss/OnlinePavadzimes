@@ -276,13 +276,25 @@ def generate_pdf(data):
     vat = data.get('vat', '0.00')
     total = data.get('total', '0.00')
     
-    totals_data = [
-        ["", "KOPĀ", f"{subtotal} €"],
-        ["", "PVN", f"{vat} €"],
-        ["", "Kopumā", f"{total} €"]
-    ]
+    raw_discount_eur = data.get('raw_discount_eur', 0.0)
+
+    totals_data = []
+
+    if raw_discount_eur > 0:
+        totals_data.append(["", "KOPĀ (bez PVN un atlaides)", f"{subtotal} €"])
+        discount_str = f"Atlaides apjoms ({data.get('discount_percent', 0):g}%)"
+        totals_data.append(["", discount_str, f"-{data.get('discount_eur', '0.00')} €"])
+        totals_data.append(["", "Kopā ar atlaidi (bez PVN)", f"{data.get('subtotal_after_discount', '0.00')} €"])
+        totals_data.append(["", "PVN", f"{vat} €"])
+        totals_data.append(["", "KOPUMĀ APMAKSAI", f"{total} €"])
+        last_row_idx = 4
+    else:
+        totals_data.append(["", "KOPĀ", f"{subtotal} €"])
+        totals_data.append(["", "PVN", f"{vat} €"])
+        totals_data.append(["", "Kopumā", f"{total} €"])
+        last_row_idx = 2
     
-    totals_table = Table(totals_data, colWidths=[90*mm, 50*mm, 30*mm])
+    totals_table = Table(totals_data, colWidths=[80*mm, 60*mm, 30*mm])
     
     if "avansa" in doc_type.lower():
         totals_style_cmds = [
@@ -294,10 +306,10 @@ def generate_pdf(data):
         totals_style_cmds = [
             ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
             ('TEXTCOLOR', (0,0), (-1,-1), TEXT_COLOR),
-            ('FONTNAME', (1,0), (1,2), BOLD_FONT),    
-            ('FONTNAME', (2,0), (2,2), REGULAR_FONT), 
-            ('FONTNAME', (1,2), (2,2), BOLD_FONT),    
-            ('FONTNAME', (2,2), (2,2), BOLD_FONT),    
+            ('FONTNAME', (1,0), (1,last_row_idx), BOLD_FONT),
+            ('FONTNAME', (2,0), (2,last_row_idx), REGULAR_FONT),
+            ('FONTNAME', (1,last_row_idx), (2,last_row_idx), BOLD_FONT),
+            ('FONTNAME', (2,last_row_idx), (2,last_row_idx), BOLD_FONT),
         ]
     
     totals_table.setStyle(TableStyle(totals_style_cmds))

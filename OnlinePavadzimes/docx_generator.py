@@ -176,19 +176,22 @@ def generate_docx(data):
     # ==========================================
     # 5. KOPSUMMAS
     # ==========================================
-    # Veidojam tabulu BEZ apmalēm (Table Normal stils to nodrošina automātiski)
-    table = doc.add_table(rows=3, cols=3)
-    table.autofit = False
-    table.columns[0].width = Cm(9)
-    table.columns[1].width = Cm(5)
-    table.columns[2].width = Cm(3)
-    
     subtotal = data.get('subtotal', '0.00')
     vat = data.get('vat', '0.00')
     total = data.get('total', '0.00')
+    raw_discount_eur = data.get('raw_discount_eur', 0.0)
     
     is_advance_doc = ("avansa" in doc_type.lower())
     
+    num_rows = 5 if raw_discount_eur > 0 else 3
+
+    # Veidojam tabulu BEZ apmalēm (Table Normal stils to nodrošina automātiski)
+    table = doc.add_table(rows=num_rows, cols=3)
+    table.autofit = False
+    table.columns[0].width = Cm(8.5)
+    table.columns[1].width = Cm(5.5)
+    table.columns[2].width = Cm(3)
+
     def set_total_row(row_idx, label, value, label_bold, val_bold):
         cell_lbl = table.cell(row_idx, 1)
         cell_val = table.cell(row_idx, 2)
@@ -201,13 +204,27 @@ def generate_docx(data):
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
     if is_advance_doc:
-        set_total_row(0, "KOPĀ", subtotal, False, False)
-        set_total_row(1, "PVN", vat, False, False)
-        set_total_row(2, "Kopumā", total, False, False)
+        if raw_discount_eur > 0:
+            set_total_row(0, "KOPĀ (bez PVN un atlaides)", subtotal, False, False)
+            set_total_row(1, f"Atlaides apjoms ({data.get('discount_percent', 0):g}%)", f"-{data.get('discount_eur', '0.00')}", False, False)
+            set_total_row(2, "Kopā ar atlaidi (bez PVN)", data.get('subtotal_after_discount', '0.00'), False, False)
+            set_total_row(3, "PVN", vat, False, False)
+            set_total_row(4, "KOPUMĀ APMAKSAI", total, False, False)
+        else:
+            set_total_row(0, "KOPĀ", subtotal, False, False)
+            set_total_row(1, "PVN", vat, False, False)
+            set_total_row(2, "Kopumā", total, False, False)
     else:
-        set_total_row(0, "KOPĀ", subtotal, True, False)
-        set_total_row(1, "PVN", vat, True, False)
-        set_total_row(2, "Kopumā", total, True, True)
+        if raw_discount_eur > 0:
+            set_total_row(0, "KOPĀ (bez PVN un atlaides)", subtotal, True, False)
+            set_total_row(1, f"Atlaides apjoms ({data.get('discount_percent', 0):g}%)", f"-{data.get('discount_eur', '0.00')}", True, False)
+            set_total_row(2, "Kopā ar atlaidi (bez PVN)", data.get('subtotal_after_discount', '0.00'), True, False)
+            set_total_row(3, "PVN", vat, True, False)
+            set_total_row(4, "KOPUMĀ APMAKSAI", total, True, True)
+        else:
+            set_total_row(0, "KOPĀ", subtotal, True, False)
+            set_total_row(1, "PVN", vat, True, False)
+            set_total_row(2, "Kopumā", total, True, True)
     
     # ==========================================
     # 6. SUMMA VĀRDIEM UN AVANSS
