@@ -339,8 +339,6 @@ def main():
 
     # Poga lapas pārzīmēšanai un jaunās summas atjaunošanai
     if st.button("🔄 Pārrēķināt summas"):
-    # Ja lietotājs pievienojis rindu, nomainījis daudzumu vai cenu, mēs to saglabājam un liekam pārzīmēt lapu
-    if not updated_items_df.equals(st.session_state.items_df):
         st.session_state.items_df = updated_items_df
         st.rerun()
 
