@@ -313,21 +313,39 @@ def main():
     st.header("Preces / Pakalpojumi")
     
     if 'items_df' not in st.session_state:
-        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1, "CENA (EUR)": 4505.00}]
+        initial_data = [{"Secība": 1, "NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1.00, "CENA (EUR)": 4505.00}]
         st.session_state.items_df = pd.DataFrame(initial_data)
         
+    # Aprēķinām "Cena kopā (EUR)", lai tā parādītos tabulā katru reizi, kad lapa tiek pārzīmēta
+    display_df = st.session_state.items_df.copy()
+    display_df['DAUDZUMS'] = pd.to_numeric(display_df['DAUDZUMS'], errors='coerce').fillna(0)
+    display_df['CENA (EUR)'] = pd.to_numeric(display_df['CENA (EUR)'], errors='coerce').fillna(0)
+    display_df['Cena kopā (EUR)'] = display_df['DAUDZUMS'] * display_df['CENA (EUR)']
+
     edited_df = st.data_editor(
-        st.session_state.items_df, num_rows="dynamic", use_container_width=True,
+        display_df, num_rows="dynamic", use_container_width=True,
         column_config={
             "Secība": st.column_config.NumberColumn("Secība", step=1),
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), 
-            "DAUDZUMS": st.column_config.NumberColumn(step=1)
+            "DAUDZUMS": st.column_config.NumberColumn(format="%.2f", step=0.01),
+            "Cena kopā (EUR)": st.column_config.NumberColumn("Cena kopā (EUR)", disabled=True, format="%.2f")
         }
     )
     
+    # Atjauninām st.session_state.items_df bez "Cena kopā (EUR)", lai piefiksētu lietotāja veiktās izmaiņas.
+    # Tas ļaus st.data_editor() automātiski atjaunoties pēc šūnas rediģēšanas, jo streamlit
+    # pārzīmēs lapu un 'Cena kopā (EUR)' tiks pārrēķināta sākumā, ja vērtības atšķiras.
+    updated_items_df = edited_df.drop(columns=['Cena kopā (EUR)'], errors='ignore')
+
+    # Poga lapas pārzīmēšanai un jaunās summas atjaunošanai
+    if st.button("🔄 Pārrēķināt summas"):
+        st.session_state.items_df = updated_items_df
+        st.rerun()
+
     subtotal, vat, total = 0.0, 0.0, 0.0
     amount_words = ""
     advance_payment, advance_percent = 0.0, 0.0
+    discount_eur, discount_percent = 0.0, 0.0
     
     def fmt_curr(val):
         return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
@@ -343,8 +361,19 @@ def main():
             calc_df['KOPĀ (EUR)'] = calc_df['DAUDZUMS'] * calc_df['CENA (EUR)']
             
             subtotal = calc_df['KOPĀ (EUR)'].sum()
-            vat = subtotal * 0.21
-            total = subtotal + vat
+
+            st.markdown("### Atlaide")
+            discount_type = st.radio("Atlaides veids:", ["Nav atlaides", "Procentos (%)", "Ciparos (EUR)"], horizontal=True)
+            if discount_type == "Procentos (%)":
+                discount_percent = st.number_input("Atlaides procenti (%)", 0.0, 100.0, 0.0, 5.0)
+                discount_eur = subtotal * (discount_percent / 100)
+            elif discount_type == "Ciparos (EUR)":
+                discount_eur = st.number_input("Atlaides summa (EUR)", 0.0, subtotal, 0.0, 10.0)
+                discount_percent = (discount_eur / subtotal) * 100 if subtotal > 0 else 0
+
+            subtotal_after_discount = subtotal - discount_eur
+            vat = subtotal_after_discount * 0.21
+            total = subtotal_after_discount + vat
             
             if doc_type == "Avansa rēķins":
                 st.markdown("### Avansa iestatījumi")
@@ -367,9 +396,12 @@ def main():
                 advance_payment = total
                 t_col1, t_col2 = st.columns([3, 1])
                 with t_col2:
-                    st.markdown(f"**KOPĀ:** € {fmt_curr(subtotal)}")
+                    st.markdown(f"**KOPĀ (bez PVN un atlaides):** € {fmt_curr(subtotal)}")
+                    if discount_eur > 0:
+                        st.markdown(f"**Atlaides apjoms ({discount_percent:g}%):** € -{fmt_curr(discount_eur)}")
+                        st.markdown(f"**Kopā ar atlaidi (bez PVN):** € {fmt_curr(subtotal_after_discount)}")
                     st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
-                    st.markdown(f"**Kopā ar PVN:** € {fmt_curr(total)}")
+                    st.markdown(f"**KOPUMĀ APMAKSAI:** € {fmt_curr(total)}")
                 amount_words = money_to_words_lv(total)
                 st.info(f"**Summa vārdiem:** {amount_words}")
             
@@ -391,13 +423,24 @@ def main():
     full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
     st.caption(f"Paraksta laukā būs: {full_signatory}")
     
+    # Nodrošinām, ka discount vērtības ir aprēķinātas un pieejamas arī ja DataFrame ir tukšs (piemēram 0)
+    try:
+        subtotal_val = subtotal
+        subtotal_after_discount_val = subtotal_after_discount
+        discount_eur_val = discount_eur
+        discount_percent_val = discount_percent
+    except NameError:
+        subtotal_val, subtotal_after_discount_val, discount_eur_val, discount_percent_val = 0.0, 0.0, 0.0, 0.0
+
     invoice_data = {
         'doc_type': doc_type, 'doc_id': doc_id, 'date': doc_date.strftime("%d.%m.%Y"),
         'due_date': due_date.strftime("%d.%m.%Y"), 'client_name': st.session_state.client_data['name'],
         'client_address': st.session_state.client_data['address'], 'client_reg_no': st.session_state.client_data['reg_no'],
         'client_vat_no': st.session_state.client_data['vat_no'], 'items': [],
-        'subtotal': fmt_curr(subtotal), 'vat': fmt_curr(vat), 'total': fmt_curr(total),
+        'subtotal': fmt_curr(subtotal_val), 'vat': fmt_curr(vat), 'total': fmt_curr(total),
         'raw_total': total, 'raw_advance': advance_payment, 'advance_percent': advance_percent,
+        'discount_eur': fmt_curr(discount_eur_val), 'raw_discount_eur': discount_eur_val,
+        'discount_percent': discount_percent_val, 'subtotal_after_discount': fmt_curr(subtotal_after_discount_val),
         'amount_words': amount_words, 'signatory': full_signatory,
         'comments': comments
     }
