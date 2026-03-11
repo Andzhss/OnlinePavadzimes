@@ -16,48 +16,40 @@ TEXT_COLOR = colors.black
 
 # --- Fontu ielāde ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+FONTS_DIR = os.path.join(CURRENT_DIR, "fonts")
 
-# Izmantojam stabilas saites no Google Fonts (Roboto lieliski atbalsta latviešu valodu)
-FONT_URLS = {
-    "Roboto-Regular.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Regular.ttf",
-    "Roboto-Bold.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Bold.ttf",
-    "Roboto-Italic.ttf": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto-Italic.ttf"
-}
-
-# 1. Automātiski lejupielādē fontus, ja tie neeksistē vai ir bojāti (mazāki par 10KB)
-for font_file, url in FONT_URLS.items():
-    font_path = os.path.join(CURRENT_DIR, font_file)
-    if not os.path.exists(font_path) or os.path.getsize(font_path) < 10000:
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response:
-                content = response.read()
-                # Saglabā tikai tad, ja tas ir pilnvērtīgs TTF fails
-                if len(content) > 10000: 
-                    with open(font_path, 'wb') as out_file:
-                        out_file.write(content)
-        except Exception as e:
-            print(f"Neizdevās lejupielādēt fontu: {e}")
-
-# 2. Reģistrē fontus
+# Reģistrē Montserrat fontus (atbalsta visus latviešu burtus un garumzīmes)
 try:
-    pdfmetrics.registerFont(TTFont('Roboto', os.path.join(CURRENT_DIR, "Roboto-Regular.ttf")))
-    REGULAR_FONT = 'Roboto'
-except:
+    pdfmetrics.registerFont(TTFont('Montserrat', os.path.join(FONTS_DIR, "Montserrat-Regular.ttf")))
+    REGULAR_FONT = 'Montserrat'
+except Exception as e:
+    print(f"Neizdevās ielādēt Montserrat: {e}")
     REGULAR_FONT = 'Helvetica'
-    print("Brīdinājums: Neizdevās reģistrēt Roboto Regular fontu.")
-    
+
 try:
-    pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(CURRENT_DIR, "Roboto-Bold.ttf")))
-    BOLD_FONT = 'Roboto-Bold'
+    pdfmetrics.registerFont(TTFont('Montserrat-Bold', os.path.join(FONTS_DIR, "Montserrat-Bold.ttf")))
+    BOLD_FONT = 'Montserrat-Bold'
 except:
     BOLD_FONT = 'Helvetica-Bold'
-    
+
 try:
-    pdfmetrics.registerFont(TTFont('Roboto-Italic', os.path.join(CURRENT_DIR, "Roboto-Italic.ttf")))
-    ITALIC_FONT = 'Roboto-Italic'
+    pdfmetrics.registerFont(TTFont('Montserrat-Italic', os.path.join(FONTS_DIR, "Montserrat-Italic.ttf")))
+    ITALIC_FONT = 'Montserrat-Italic'
 except:
     ITALIC_FONT = 'Helvetica-Oblique'
+    
+try:
+    pdfmetrics.registerFont(TTFont('Montserrat-BoldItalic', os.path.join(FONTS_DIR, "Montserrat-BoldItalic.ttf")))
+    BOLD_ITALIC_FONT = 'Montserrat-BoldItalic'
+except:
+    BOLD_ITALIC_FONT = 'Helvetica-BoldOblique'
+    
+# Reģistrējam kopējo fontu ģimeni, lai style bold/italic strādātu kopā
+try:
+    from reportlab.pdfbase.pdfmetrics import registerFontFamily
+    registerFontFamily('Montserrat', normal='Montserrat', bold='Montserrat-Bold', italic='Montserrat-Italic', boldItalic='Montserrat-BoldItalic')
+except:
+    pass
 
 # --- Palīgklase horizontālajām līnijām ---
 class HorizontalLine(Flowable):
