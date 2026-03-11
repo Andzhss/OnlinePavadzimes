@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Streamlit
-        run: curl -I https://onlinepavadzimes-eszcghpbd8upg2u7jz9df8.streamlit.app/
+        run: curl -L https://onlinepavadzimes-eszcghpbd8upg2u7jz9df8.streamlit.app/
