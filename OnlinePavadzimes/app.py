@@ -182,7 +182,35 @@ def load_presets():
     return pd.DataFrame(columns=["NOSAUKUMS", "Mērvienība", "CENA (EUR)"])
 
 def save_presets(df):
+    # 1. Saglabā lokāli failu (nepieciešams, lai uzreiz redzētu izmaiņas aplikācijā)
     df.to_csv("presets.csv", index=False)
+    
+    # 2. Sūta izmaiņas tieši uz GitHub
+    if "GITHUB_TOKEN" in st.secrets:
+        try:
+            from github import Github
+            # Pieslēdzas GitHub, izmantojot drošo atslēgu
+            g = Github(st.secrets["GITHUB_TOKEN"])
+            
+            # ATCERIES: Nomaini uz savu repozitorija nosaukumu, ja tas ir citādāks!
+            repo = g.get_repo("Andzhss/OnlinePavadzimes") 
+            
+            # Pārvērš jauno tabulu par teksta failu
+            csv_content = df.to_csv(index=False)
+            
+            # Precīzs ceļš līdz failam tavā repozitorijā
+            file_path = "OnlinePavadzimes/presets.csv" 
+            
+            # Atrod esošo failu GitHubā un nomaina tā saturu
+            contents = repo.get_contents(file_path)
+            repo.update_file(
+                contents.path, 
+                "Automātiski atjauninātas produktu sagataves (no Streamlit)", 
+                csv_content, 
+                contents.sha
+            )
+        except Exception as e:
+            st.error(f"Kļūda sinhronizējot ar GitHub: {e}")
 
 def render_presets_app():
     st.header("Produktu un Pakalpojumu Sagataves")
