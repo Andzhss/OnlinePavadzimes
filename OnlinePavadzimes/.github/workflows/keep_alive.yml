@@ -1,1 +1,15 @@
+name: Keep Streamlit Alive
 
+on:
+  schedule:
+    # Darbosies ik pēc 1 stundas
+    - cron: '0 */1 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping_app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send request to Streamlit
+        # Nomaini šo uz savu reālo Streamlit adresi!
+        run: curl -I https://onlinepavadzimes-eszcghpbd8upg2u7jz9df8.streamlit.app/
