@@ -32,6 +32,12 @@ def add_horizontal_line(doc):
 def generate_docx(data):
     doc = Document()
     
+    # Iestatām noklusējuma fontu uz Montserrat
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Montserrat'
+    font.size = Pt(10)
+
     # --- Dokumenta apmales ---
     sections = doc.sections
     for section in sections:
