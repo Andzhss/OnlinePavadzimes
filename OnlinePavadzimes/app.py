@@ -182,9 +182,17 @@ GITHUB_REPO = "Andzhss/OnlinePavadzimes"
 GITHUB_FILE_PATH = "OnlinePavadzimes/presets.csv"
 
 def load_presets():
+    default_df = pd.DataFrame(columns=["NOSAUKUMS", "Mērvienība", "CENA (EUR)"])
     if os.path.exists("presets.csv"):
-        return pd.read_csv("presets.csv")
-    return pd.DataFrame(columns=["NOSAUKUMS", "Mērvienība", "CENA (EUR)"])
+        try:
+            df = pd.read_csv("presets.csv")
+            if df.empty or "NOSAUKUMS" not in df.columns:
+                return default_df
+            return df
+        except Exception:
+            # Neļaut sabojātam CSV failam (vai HTML atbildei no Github) uzkārt aplikāciju
+            return default_df
+    return default_df
 
 def save_presets(df):
     df.to_csv("presets.csv", index=False)
@@ -226,28 +234,34 @@ def render_presets_app():
     st.header("Produktu un Pakalpojumu Sagataves")
     st.write("Šeit varat pievienot, labot un dzēst biežāk izmantotos produktus.")
 
-    with st.expander("🔗 Pieslēgties GitHub (Lai saglabātu produktus ilgtermiņā)", expanded=False):
-        st.markdown("Lai aplikācija automātiski atjauninātu produktus Jūsu GitHub lapā (lai tie nepazustu pēc lapas izslēgšanas), nepieciešams GitHub Token.")
-        st.markdown("1. Ej uz GitHub -> Settings -> Developer Settings -> Personal access tokens (classic).")
-        st.markdown("2. Ģenerē jaunu token ar **repo** atļauju un iekopē to šeit:")
-        if "github_token" not in st.session_state:
-            st.session_state.github_token = ""
-        st.session_state.github_token = st.text_input("GitHub Token", value=st.session_state.github_token, type="password")
+    github_token = st.secrets.get("GITHUB_TOKEN", "")
+
+    if not github_token:
+        st.warning("⚠️ GitHub Token nav atrasts. Izmaiņas tiks saglabātas tikai lokāli un pēc servera pārstartēšanas pazudīs.")
+        with st.expander("Kā pieslēgt GitHub Token?"):
+            st.markdown("1. Dodieties uz Streamlit Cloud vadības paneli (Manage app -> Settings -> Secrets).")
+            st.markdown("2. Ievadiet Jūsu GitHub atslēgu šādā formātā:")
+            st.code('GITHUB_TOKEN = "ghp_Jusu_GitHub_Token"')
 
     # Importēt pogas kolonnas virs tabulas
     c1, c2 = st.columns([1, 1])
     with c1:
         if st.button("⬇️ Importēt no GitHub (Atjaunot)"):
             try:
+                # Lai apietu kešatmiņu, varam pievienot headerus (īpaši noderīgi privātiem repozitorijiem, ja ir token)
+                headers = {}
+                if github_token:
+                    headers["Authorization"] = f"token {github_token}"
+
                 raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{GITHUB_FILE_PATH}"
-                response = requests.get(raw_url)
+                response = requests.get(raw_url, headers=headers)
                 if response.status_code == 200:
                     with open("presets.csv", "wb") as f:
                         f.write(response.content)
                     st.success("Sagataves veiksmīgi ielādētas no GitHub!")
                     st.rerun()
                 else:
-                    st.error("Neizdevās lejupielādēt failu no GitHub.")
+                    st.error("Neizdevās lejupielādēt failu no GitHub (iespējams tas ir privāts vai vēl nepastāv).")
             except Exception as e:
                 st.error(f"Kļūda: {e}")
 
@@ -265,9 +279,9 @@ def render_presets_app():
         save_presets(edited_presets)
 
         # Ja ievadīts token, saglabājam arī GitHub
-        if st.session_state.github_token:
+        if github_token:
             with st.spinner("Saglabā GitHub repozitorijā..."):
-                success, msg = save_presets_to_github(edited_presets, st.session_state.github_token)
+                success, msg = save_presets_to_github(edited_presets, github_token)
                 if success:
                     st.success(f"Lieliski! Dati saglabāti lokāli un {msg}")
                 else:
