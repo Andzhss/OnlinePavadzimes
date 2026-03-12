@@ -259,11 +259,10 @@ def generate_docx(data):
     # ==========================================
     # 7. PARAKSTI UN PAPILDINFO
     # ==========================================
-    p_info = doc.add_paragraph()
-    p_info.add_run("Papildus informācija:").bold = True
-    
     comments = data.get('comments', '').strip()
     if comments:
+        p_info = doc.add_paragraph()
+        p_info.add_run("Papildus informācija:").bold = True
         p_info.add_run(f"\n{comments}")
     
     doc.add_paragraph()

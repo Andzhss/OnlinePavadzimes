@@ -329,20 +329,21 @@ def generate_pdf(data):
                               ParagraphStyle('Words', parent=style_italic, alignment=TA_RIGHT)))
     
     # ==========================================
-    # 7. PARAKSTI UN PAPILDINFO (Ieskaitot komentārus)
+    # 7. PAPILDINFO (Komentāri)
+    # ==========================================
+    comments = data.get('comments', '').strip()
+    if comments:
+        elements.append(Spacer(1, 10*mm))
+        elements.append(Paragraph(f"<font name='{BOLD_FONT}'>Papildus informācija:</font>", style_bold))
+        comments_html = comments.replace('\n', '<br/>')
+        elements.append(Paragraph(comments_html, style_normal))
+
+    # ==========================================
+    # 8. PARAKSTI
     # ==========================================
     elements.append(Spacer(1, 5*mm))
     elements.append(HorizontalLine(thickness=0.2))
     elements.append(Spacer(1, 2*mm))
-    
-    comments = data.get('comments', '').strip()
-    if comments:
-        comments_html = comments.replace('\n', '<br/>')
-        elements.append(Paragraph(f"<b>Papildus informācija:</b><br/>{comments_html}", style_normal))
-    else:
-        elements.append(Paragraph("<b>Papildus informācija:</b>", style_bold))
-        
-    elements.append(Spacer(1, 10*mm))
     
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
     
