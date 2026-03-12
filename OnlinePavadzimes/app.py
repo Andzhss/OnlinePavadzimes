@@ -195,35 +195,7 @@ def load_presets():
     return default_df
 
 def save_presets(df):
-    # 1. Saglabā lokāli failu (nepieciešams, lai uzreiz redzētu izmaiņas aplikācijā)
     df.to_csv("presets.csv", index=False)
-    
-    # 2. Sūta izmaiņas tieši uz GitHub
-    if "GITHUB_TOKEN" in st.secrets:
-        try:
-            from github import Github
-            # Pieslēdzas GitHub, izmantojot drošo atslēgu
-            g = Github(st.secrets["GITHUB_TOKEN"])
-            
-            # ATCERIES: Nomaini uz savu repozitorija nosaukumu, ja tas ir citādāks!
-            repo = g.get_repo("Andzhss/OnlinePavadzimes") 
-            
-            # Pārvērš jauno tabulu par teksta failu
-            csv_content = df.to_csv(index=False)
-            
-            # Precīzs ceļš līdz failam tavā repozitorijā
-            file_path = "OnlinePavadzimes/presets.csv" 
-            
-            # Atrod esošo failu GitHubā un nomaina tā saturu
-            contents = repo.get_contents(file_path)
-            repo.update_file(
-                contents.path, 
-                "Automātiski atjauninātas produktu sagataves (no Streamlit)", 
-                csv_content, 
-                contents.sha
-            )
-        except Exception as e:
-            st.error(f"Kļūda sinhronizējot ar GitHub: {e}")
 
 def save_presets_to_github(df, token):
     try:
@@ -283,15 +255,23 @@ def render_presets_app():
 
                 raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{GITHUB_FILE_PATH}"
                 response = requests.get(raw_url, headers=headers)
+
                 if response.status_code == 200:
-                    with open("presets.csv", "wb") as f:
-                        f.write(response.content)
-                    st.success("Sagataves veiksmīgi ielādētas no GitHub!")
-                    st.rerun()
+                    # Papildus pārbaude - pārliecināmies, ka failā tiešām ir CSV ar pareizajām kolonnām, pirms pārrakstām lokālo failu!
+                    content_str = response.content.decode('utf-8')
+                    if "NOSAUKUMS,Mērvienība,CENA (EUR)" in content_str:
+                        with open("presets.csv", "w", encoding='utf-8') as f:
+                            f.write(content_str)
+                        st.success("Sagataves veiksmīgi ielādētas no GitHub!")
+                        st.rerun()
+                    else:
+                        st.error("GitHub atgrieza failu, bet tas nav korekts CSV formāts (nesatur vajadzīgās kolonnas). Lūdzu pārbaudiet repozitoriju.")
+                elif response.status_code == 404:
+                    st.error("Fails netika atrasts. Pārliecinieties, ka esat pievienojis GitHub Token (ja repozitorijs ir privāts) vai fails tiešām eksistē.")
                 else:
-                    st.error("Neizdevās lejupielādēt failu no GitHub (iespējams tas ir privāts vai vēl nepastāv).")
+                    st.error(f"Neizdevās lejupielādēt failu (Kļūdas kods: {response.status_code}).")
             except Exception as e:
-                st.error(f"Kļūda: {e}")
+                st.error(f"Kļūda importējot: {e}")
 
     presets_df = load_presets()
     edited_presets = st.data_editor(
