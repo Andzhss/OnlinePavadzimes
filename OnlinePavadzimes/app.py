@@ -4,6 +4,8 @@ import pandas as pd
 import json
 import os
 import io
+import requests
+import base64
 
 # --- Google Bibliotēkas ---
 from google.auth.transport.requests import Request
@@ -176,6 +178,9 @@ def load_test_invoice(selected_test):
 
 
 
+GITHUB_REPO = "Andzhss/OnlinePavadzimes"
+GITHUB_FILE_PATH = "OnlinePavadzimes/presets.csv"
+
 def load_presets():
     if os.path.exists("presets.csv"):
         return pd.read_csv("presets.csv")
@@ -212,9 +217,67 @@ def save_presets(df):
         except Exception as e:
             st.error(f"Kļūda sinhronizējot ar GitHub: {e}")
 
+def save_presets_to_github(df, token):
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        # Vispirms iegūstam faila SHA (lai varētu to pārrakstītu)
+        response = requests.get(url, headers=headers)
+        sha = ""
+        if response.status_code == 200:
+            sha = response.json().get("sha", "")
+
+        csv_content = df.to_csv(index=False)
+        encoded_content = base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
+
+        data = {
+            "message": "Update presets.csv via App",
+            "content": encoded_content,
+            "branch": "main"
+        }
+        if sha:
+            data["sha"] = sha
+
+        put_response = requests.put(url, headers=headers, json=data)
+        if put_response.status_code in [200, 201]:
+            return True, "Veiksmīgi saglabāts GitHub repozitorijā!"
+        else:
+            return False, f"Kļūda GitHub saglabāšanā: {put_response.text}"
+    except Exception as e:
+        return False, str(e)
+
 def render_presets_app():
     st.header("Produktu un Pakalpojumu Sagataves")
-    st.write("Šeit varat pievienot, labot un dzēst biežāk izmantotos produktus. Izmaiņas saglabāsies automātiski, nospiežot pogu.")
+    st.write("Šeit varat pievienot, labot un dzēst biežāk izmantotos produktus.")
+
+    with st.expander("🔗 Pieslēgties GitHub (Lai saglabātu produktus ilgtermiņā)", expanded=False):
+        st.markdown("Lai aplikācija automātiski atjauninātu produktus Jūsu GitHub lapā (lai tie nepazustu pēc lapas izslēgšanas), nepieciešams GitHub Token.")
+        st.markdown("1. Ej uz GitHub -> Settings -> Developer Settings -> Personal access tokens (classic).")
+        st.markdown("2. Ģenerē jaunu token ar **repo** atļauju un iekopē to šeit:")
+        if "github_token" not in st.session_state:
+            st.session_state.github_token = ""
+        st.session_state.github_token = st.text_input("GitHub Token", value=st.session_state.github_token, type="password")
+
+    # Importēt pogas kolonnas virs tabulas
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        if st.button("⬇️ Importēt no GitHub (Atjaunot)"):
+            try:
+                raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{GITHUB_FILE_PATH}"
+                response = requests.get(raw_url)
+                if response.status_code == 200:
+                    with open("presets.csv", "wb") as f:
+                        f.write(response.content)
+                    st.success("Sagataves veiksmīgi ielādētas no GitHub!")
+                    st.rerun()
+                else:
+                    st.error("Neizdevās lejupielādēt failu no GitHub.")
+            except Exception as e:
+                st.error(f"Kļūda: {e}")
 
     presets_df = load_presets()
     edited_presets = st.data_editor(
@@ -228,8 +291,17 @@ def render_presets_app():
 
     if st.button("💾 Saglabāt izmaiņas sagatavēs"):
         save_presets(edited_presets)
-        st.success("Sagataves veiksmīgi saglabātas!")
-        st.rerun()
+
+        # Ja ievadīts token, saglabājam arī GitHub
+        if st.session_state.github_token:
+            with st.spinner("Saglabā GitHub repozitorijā..."):
+                success, msg = save_presets_to_github(edited_presets, st.session_state.github_token)
+                if success:
+                    st.success(f"Lieliski! Dati saglabāti lokāli un {msg}")
+                else:
+                    st.warning(f"Lokāli saglabāts, bet GitHub saglabāšana neizdevās: {msg}")
+        else:
+            st.success("Sagataves veiksmīgi saglabātas tikai lokāli! (Pievienojiet Token augstāk, lai tās nepazustu)")
 
 def render_invoice_app():
     history = load_history(HISTORY_FILE)
