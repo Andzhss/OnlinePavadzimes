@@ -12,9 +12,9 @@ from docx_generator import generate_docx
 
 app = Flask(__name__)
 # Atļaujam Shopify lapai sūtīt pieprasījumus uz šo serveri
-CORS(app) 
+CORS(app)
 
-GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9" 
+GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9"
 TOKEN_FILE = "token.json"
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
@@ -42,11 +42,11 @@ def upload_to_drive(file_buffer, filename, mime_type):
 @app.route('/generate/<file_type>', methods=['POST'])
 def generate_doc(file_type):
     data = request.json
-    
+
     # Ģenerējam faila nosaukumu
     doc_id = data.get('doc_id', 'BR_0000').replace(" ", "_")
     doc_type_name = data.get('doc_type', 'Pavadzime').replace(" ", "_")
-    
+
     if file_type == 'pdf':
         buffer = generate_pdf(data)
         filename = f"{doc_type_name}_{doc_id}.pdf"
