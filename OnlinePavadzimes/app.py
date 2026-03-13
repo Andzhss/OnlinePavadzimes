@@ -243,6 +243,9 @@ def render_presets_app():
             st.markdown("2. Ievadiet Jūsu GitHub atslēgu šādā formātā:")
             st.code('GITHUB_TOKEN = "ghp_Jusu_GitHub_Token"')
 
+    if "preset_editor_key" not in st.session_state:
+        st.session_state.preset_editor_key = 0
+
     # Importēt pogas kolonnas virs tabulas
     c1, c2 = st.columns([1, 1])
     with c1:
@@ -263,6 +266,7 @@ def render_presets_app():
                         with open("presets.csv", "w", encoding='utf-8') as f:
                             f.write(content_str)
                         st.success("Sagataves veiksmīgi ielādētas no GitHub!")
+                        st.session_state.preset_editor_key += 1 # Nomainām atslēgu, lai piespiestu st.data_editor pārzīmēties
                         st.rerun()
                     else:
                         st.error("GitHub atgrieza failu, bet tas nav korekts CSV formāts (nesatur vajadzīgās kolonnas). Lūdzu pārbaudiet repozitoriju.")
@@ -276,6 +280,7 @@ def render_presets_app():
     presets_df = load_presets()
     edited_presets = st.data_editor(
         presets_df,
+        key=f"presets_editor_{st.session_state.preset_editor_key}",
         num_rows="dynamic",
         use_container_width=True,
         column_config={
