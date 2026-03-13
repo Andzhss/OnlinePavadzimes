@@ -284,7 +284,7 @@ def render_presets_app():
         presets_df,
         key=f"presets_editor_{st.session_state.preset_editor_key}",
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         column_config={
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f", step=0.01)
         }
@@ -482,7 +482,7 @@ def render_invoice_app():
 
     # Atļaujam rindu pārkārtošanu (Drag & Drop), izmantojot Streamlit noklusēto indeksu
     edited_df = st.data_editor(
-        display_df, num_rows="dynamic", use_container_width=True, hide_index=False,
+        display_df, num_rows="dynamic", width="stretch", hide_index=False,
         column_config={
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), 
             "DAUDZUMS": st.column_config.NumberColumn(format="%.2f", step=0.01),
@@ -676,7 +676,7 @@ def render_invoice_app():
             rename_map = {'doc_id': 'Nr.', 'date': 'Datums', 'client_name': 'Klients', 
                           'doc_type': 'Tips', 'total': 'Summa (EUR)', 'created_at': 'Izveidots'}
             valid_cols = [c for c in display_cols if c in hist_df.columns]
-            st.dataframe(hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), use_container_width=True)
+            st.dataframe(hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), width="stretch")
         else:
             st.info("Vēsture ir tukša.")
 
