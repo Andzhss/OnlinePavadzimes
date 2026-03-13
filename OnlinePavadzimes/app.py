@@ -20,14 +20,10 @@ from docx_generator import generate_docx
 
 # --- Konfigurācija ---
 st.set_page_config(page_title="SIA BRATUS Invoice Generator", layout="wide")
-
-# Precīza failu atrašanās vieta (lai strādātu Streamlit Cloud mapju struktūrā)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-HISTORY_FILE = os.path.join(BASE_DIR, "invoice_history.json")
-TEST_HISTORY_FILE = os.path.join(BASE_DIR, "test_invoice_history.json")
-CREDENTIALS_FILE = os.path.join(BASE_DIR, "credentials.json")
-TOKEN_FILE = os.path.join(BASE_DIR, "token.json")
-LOCAL_PRESETS_PATH = os.path.join(BASE_DIR, "presets.csv")
+HISTORY_FILE = "invoice_history.json"
+TEST_HISTORY_FILE = "test_invoice_history.json"
+CREDENTIALS_FILE = "credentials.json"
+TOKEN_FILE = "token.json"
 
 # !!! IELĪMĒ SAVU MAPES ID ŠEIT !!!
 GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9" 
@@ -187,18 +183,19 @@ GITHUB_FILE_PATH = "OnlinePavadzimes/presets.csv"
 
 def load_presets():
     default_df = pd.DataFrame(columns=["NOSAUKUMS", "Mērvienība", "CENA (EUR)"])
-    if os.path.exists(LOCAL_PRESETS_PATH):
+    if os.path.exists("presets.csv"):
         try:
-            df = pd.read_csv(LOCAL_PRESETS_PATH)
+            df = pd.read_csv("presets.csv")
             if df.empty or "NOSAUKUMS" not in df.columns:
                 return default_df
             return df
         except Exception:
+            # Neļaut sabojātam CSV failam (vai HTML atbildei no Github) uzkārt aplikāciju
             return default_df
     return default_df
 
 def save_presets(df):
-    df.to_csv(LOCAL_PRESETS_PATH, index=False)
+    df.to_csv("presets.csv", index=False)
 
 def save_presets_to_github(df, token):
     try:
@@ -208,6 +205,7 @@ def save_presets_to_github(df, token):
             "Accept": "application/vnd.github.v3+json"
         }
 
+        # Vispirms iegūstam faila SHA (lai varētu to pārrakstītu)
         response = requests.get(url, headers=headers)
         sha = ""
         if response.status_code == 200:
@@ -248,50 +246,62 @@ def render_presets_app():
     if "preset_editor_key" not in st.session_state:
         st.session_state.preset_editor_key = 0
 
+    # Importēt pogas kolonnas virs tabulas
     c1, c2 = st.columns([1, 1])
     with c1:
         if st.button("⬇️ Importēt no GitHub (Atjaunot)"):
-            try:
-                # Izmantojam GitHub API, lai izvairītos no raw.githubusercontent.com kešatmiņas un nolasītu visjaunāko failu
-                url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
-                headers = {
-                    "Accept": "application/vnd.github.v3+json"
-                }
-                if github_token:
-                    clean_token = github_token.strip().strip('"').strip("'")
-                    headers["Authorization"] = f"Bearer {clean_token}"
+            with st.status("⬇️ Importējam sagataves...", expanded=True) as status:
+                try:
+                    st.write("🌐 Sazināmies ar GitHub API...")
+                    # Izmantojam GitHub API, lai izvairītos no raw.githubusercontent.com kešatmiņas un nolasītu visjaunāko failu
+                    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+                    headers = {
+                        "Accept": "application/vnd.github.v3+json"
+                    }
+                    if github_token:
+                        headers["Authorization"] = f"token {github_token}"
 
-                response = requests.get(url, headers=headers)
+                    response = requests.get(url, headers=headers)
 
-                if response.status_code == 200:
-                    content_b64 = response.json().get("content", "")
-                    if content_b64:
-                        content_str = base64.b64decode(content_b64).decode("utf-8")
+                    if response.status_code == 200:
+                        st.write("✅ Atbilde saņemta, apstrādājam datus...")
+                        content_b64 = response.json().get("content", "")
+                        if content_b64:
+                            content_str = base64.b64decode(content_b64).decode("utf-8")
 
-                        # Papildus pārbaude - pārliecināmies, ka failā tiešām ir CSV ar pareizajām kolonnām
-                        if "NOSAUKUMS" in content_str and "CENA (EUR)" in content_str:
+                            st.write("💾 Saglabājam lokāli presets.csv...")
+                            # Saglabājam failu lokāli
                             with open("presets.csv", "w", encoding='utf-8') as f:
                                 f.write(content_str)
-                            st.success("Sagataves veiksmīgi ielādētas no GitHub!")
-                            st.session_state.preset_editor_key += 1 # Nomainām atslēgu, lai piespiestu st.data_editor pārzīmēties
-                            st.rerun()
+
+                            # Atjauninām tabulu ar tikko iegūtajiem datiem
+                            st.session_state.preset_editor_key += 1
+                            st.session_state.import_success = True
+                            status.update(label="Veiksmīgi ielādēts!", state="complete", expanded=False)
+                            st.rerun() # Pārzīmējam lapu
                         else:
-                            st.error("GitHub atgrieza failu, bet tas nav korekts CSV formāts (nesatur vajadzīgās kolonnas). Lūdzu pārbaudiet repozitoriju.")
+                            status.update(label="Kļūda datu apstrādē", state="error", expanded=True)
+                            st.error("Neizdevās nolasīt faila saturu no GitHub API.")
+                    elif response.status_code == 404:
+                        status.update(label="Fails netika atrasts", state="error", expanded=True)
+                        st.error("Fails netika atrasts. Pārliecinieties, ka esat pievienojis GitHub Token (ja repozitorijs ir privāts) vai fails tiešām eksistē.")
                     else:
-                        st.error("Neizdevās nolasīt faila saturu no GitHub API.")
-                elif response.status_code == 404:
-                    st.error("Fails netika atrasts. Pārliecinieties, ka esat pievienojis GitHub Token vai fails tiešām eksistē.")
-                else:
-                    st.error(f"Neizdevās lejupielādēt failu (Kļūdas kods: {response.status_code}).")
-            except Exception as e:
-                st.error(f"Kļūda importējot: {e}")
+                        status.update(label="Kļūda savienojumā", state="error", expanded=True)
+                        st.error(f"Neizdevās lejupielādēt failu (Kļūdas kods: {response.status_code}).")
+                except Exception as e:
+                    status.update(label="Negaidīta kļūda", state="error", expanded=True)
+                    st.error(f"Kļūda importējot: {e}")
+
+    if st.session_state.get("import_success"):
+        st.success("Sagataves veiksmīgi ielādētas no GitHub!")
+        st.session_state.import_success = False
 
     presets_df = load_presets()
     edited_presets = st.data_editor(
         presets_df,
         key=f"presets_editor_{st.session_state.preset_editor_key}",
         num_rows="dynamic",
-        width="stretch",
+        use_container_width=True,
         column_config={
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f", step=0.01)
         }
@@ -300,6 +310,7 @@ def render_presets_app():
     if st.button("💾 Saglabāt izmaiņas sagatavēs"):
         save_presets(edited_presets)
 
+        # Ja ievadīts token, saglabājam arī GitHub
         if github_token:
             with st.spinner("Saglabā GitHub repozitorijā..."):
                 success, msg = save_presets_to_github(edited_presets, github_token)
@@ -314,6 +325,7 @@ def render_invoice_app():
     history = load_history(HISTORY_FILE)
     next_number = get_next_invoice_number(history)
 
+    # --- SĀNA JOSLA: 1. Dokumenta Dati ---
     st.sidebar.header("Rēķina iestatījumi")
 
     if 'doc_number_input' not in st.session_state:
@@ -339,6 +351,7 @@ def render_invoice_app():
     
     st.sidebar.markdown("---")
 
+    # --- SĀNA JOSLA: 2. Testa Pavadzīmju Ielāde ---
     st.sidebar.subheader("🔄 Testa pavadzīmju ielāde")
     test_history = load_history(TEST_HISTORY_FILE)
     if test_history:
@@ -352,6 +365,7 @@ def render_invoice_app():
 
     st.sidebar.markdown("---")
 
+    # --- SĀNA JOSLA: 3. Google Drive ---
     st.sidebar.subheader("Google Drive")
     if GOOGLE_DRIVE_FOLDER_ID:
         drive_url = f"https://drive.google.com/drive/folders/{GOOGLE_DRIVE_FOLDER_ID}"
@@ -390,6 +404,7 @@ def render_invoice_app():
 
     st.sidebar.markdown("---")
     
+    # --- SĀNA JOSLA: 4. Datu Pārvaldība ---
     st.sidebar.subheader("Datu pārvaldība")
     if 'confirm_delete_history' not in st.session_state:
         st.session_state.confirm_delete_history = False
@@ -409,6 +424,7 @@ def render_invoice_app():
             st.session_state.confirm_delete_history = False
             st.rerun()
     
+    # --- GALVENAIS SATURS ---
     st.header("Klients")
     col1, col2 = st.columns([1, 1])
     
@@ -442,11 +458,14 @@ def render_invoice_app():
     
     if 'items_df' not in st.session_state:
         initial_data = [{"NOSAUKUMS": "Lāzeriekārta; modeļa nr.: KH7050; 80W", "Mērvienība": "Gab.", "DAUDZUMS": 1.00, "CENA (EUR)": 4505.00}]
+        # Secības kolonnu vairs nelietosim tabulā
         st.session_state.items_df = pd.DataFrame(initial_data)
         
+        # Jau ielādētās vecās sesijas var saturēt "Secība" kolonnu - izdzēšam to, lai nerādītos.
         if "Secība" in st.session_state.items_df.columns:
             st.session_state.items_df = st.session_state.items_df.drop(columns=["Secība"])
 
+    # --- SAGATAVJU PIEVIENOŠANA ---
     st.subheader("Pievienot no sagatavēm")
     presets_df = load_presets()
     if not presets_df.empty:
@@ -457,7 +476,7 @@ def render_invoice_app():
         with p_col2:
             preset_qty = st.number_input("Daudzums", min_value=0.01, value=1.00, step=0.01)
         with p_col3:
-            st.write("") 
+            st.write("") # Spacer for vertical alignment
             st.write("")
             if st.button("➕ Pievienot tabulai"):
                 selected_row = presets_df[presets_df['NOSAUKUMS'] == selected_preset_name].iloc[0]
@@ -472,13 +491,15 @@ def render_invoice_app():
     else:
         st.info("Sagatavju saraksts ir tukšs. Pievienojiet tos sānu izvēlnes sadaļā 'Produktu sagataves'.")
 
+    # Aprēķinām "Cena kopā (EUR)", lai tā parādītos tabulā katru reizi, kad lapa tiek pārzīmēta
     display_df = st.session_state.items_df.copy()
     display_df['DAUDZUMS'] = pd.to_numeric(display_df['DAUDZUMS'], errors='coerce').fillna(0)
     display_df['CENA (EUR)'] = pd.to_numeric(display_df['CENA (EUR)'], errors='coerce').fillna(0)
     display_df['Cena kopā (EUR)'] = display_df['DAUDZUMS'] * display_df['CENA (EUR)']
 
+    # Atļaujam rindu pārkārtošanu (Drag & Drop), izmantojot Streamlit noklusēto indeksu
     edited_df = st.data_editor(
-        display_df, num_rows="dynamic", width="stretch", hide_index=False,
+        display_df, num_rows="dynamic", use_container_width=True, hide_index=False,
         column_config={
             "CENA (EUR)": st.column_config.NumberColumn(format="%.2f"), 
             "DAUDZUMS": st.column_config.NumberColumn(format="%.2f", step=0.01),
@@ -486,8 +507,12 @@ def render_invoice_app():
         }
     )
     
+    # Atjauninām st.session_state.items_df bez "Cena kopā (EUR)", lai piefiksētu lietotāja veiktās izmaiņas.
+    # Tas ļaus st.data_editor() automātiski atjaunoties pēc šūnas rediģēšanas, jo streamlit
+    # pārzīmēs lapu un 'Cena kopā (EUR)' tiks pārrēķināta sākumā, ja vērtības atšķiras.
     updated_items_df = edited_df.drop(columns=['Cena kopā (EUR)'], errors='ignore')
 
+    # Poga lapas pārzīmēšanai un jaunās summas atjaunošanai
     if st.button("🔄 Pārrēķināt summas"):
         st.session_state.items_df = updated_items_df
         st.rerun()
@@ -503,6 +528,8 @@ def render_invoice_app():
     try:
         if not edited_df.empty:
             calc_df = edited_df.copy()
+            # Mēs vairs nesakārtojam pēc vecās 'Secība' kolonnas, jo tagad to nosaka rindas secība (Drag & Drop) un indekss
+            # Tāpēc 'Secība' šeit vairs nav vajadzīga
                 
             calc_df['DAUDZUMS'] = pd.to_numeric(calc_df['DAUDZUMS'], errors='coerce').fillna(0)
             calc_df['CENA (EUR)'] = pd.to_numeric(calc_df['CENA (EUR)'], errors='coerce').fillna(0)
@@ -571,6 +598,7 @@ def render_invoice_app():
     full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
     st.caption(f"Paraksta laukā būs: {full_signatory}")
     
+    # Nodrošinām, ka discount vērtības ir aprēķinātas un pieejamas arī ja DataFrame ir tukšs (piemēram 0)
     try:
         subtotal_val = subtotal
         subtotal_after_discount_val = subtotal_after_discount
@@ -593,7 +621,9 @@ def render_invoice_app():
     }
     
     if not edited_df.empty:
+        # iterrows saglabā rindu kārtību, tādēļ mēs varam veidot "Secība" numuru pievienošanas brīdī.
         for index, row in calc_df.iterrows():
+            # Ievietojam seq, lai ģeneratori zinātu rindas numuru (piemēram Word dokumentā/PDF), ja tas joprojām ir vajadzīgs tabulā
             invoice_data['items'].append({
                 'seq': len(invoice_data['items']) + 1,
                 'name': row.get('NOSAUKUMS', ''), 'unit': row.get('Mērvienība', ''),
@@ -605,10 +635,12 @@ def render_invoice_app():
 
     st.markdown("---")
     
+    # === POGU UN LEJUPIELĀDES SADAĻA ===
     st.markdown("### Lejupielāde un Arhivēšana")
     
     is_proforma = st.toggle("📝 Ģenerēt kā Proformas (testa) dokumentu", value=False, help="Ja ieslēgts: Dokuments sauksies 'Proformas...', saglabāsies TIKAI testa vēsturē un NETIKS augšupielādēts Google Drive.")
 
+    # Ja toggle ir aktīvs, nomainām nosaukumu pirms ģenerēšanas
     if is_proforma:
         if doc_type == "Pavadzīme":
             invoice_data['doc_type'] = "Proformas pavadzīme"
@@ -619,6 +651,7 @@ def render_invoice_app():
             
     d_col1, d_col2 = st.columns(2)
     
+    # 1. PDF poga
     try:
         pdf_file = generate_pdf(invoice_data)
         file_name_pdf = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf"
@@ -635,6 +668,7 @@ def render_invoice_app():
     except Exception as e:
         st.error(f"Kļūda PDF: {e}")
         
+    # 2. WORD poga
     try:
         docx_file = generate_docx(invoice_data)
         file_name_docx = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx"
@@ -659,9 +693,10 @@ def render_invoice_app():
             rename_map = {'doc_id': 'Nr.', 'date': 'Datums', 'client_name': 'Klients', 
                           'doc_type': 'Tips', 'total': 'Summa (EUR)', 'created_at': 'Izveidots'}
             valid_cols = [c for c in display_cols if c in hist_df.columns]
-            st.dataframe(hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), width="stretch")
+            st.dataframe(hist_df[valid_cols].rename(columns=rename_map).sort_index(ascending=False), use_container_width=True)
         else:
             st.info("Vēsture ir tukša.")
+
 
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
