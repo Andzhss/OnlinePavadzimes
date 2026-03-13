@@ -252,24 +252,33 @@ def render_presets_app():
     with c1:
         if st.button("⬇️ Importēt no GitHub (Atjaunot)"):
             try:
-                headers = {}
+                # Izmantojam GitHub API, lai izvairītos no raw.githubusercontent.com kešatmiņas un nolasītu visjaunāko failu
+                url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE_PATH}"
+                headers = {
+                    "Accept": "application/vnd.github.v3+json"
+                }
                 if github_token:
                     clean_token = github_token.strip().strip('"').strip("'")
                     headers["Authorization"] = f"Bearer {clean_token}"
 
-                raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{GITHUB_FILE_PATH}"
-                response = requests.get(raw_url, headers=headers)
+                response = requests.get(url, headers=headers)
 
                 if response.status_code == 200:
-                    content_str = response.content.decode('utf-8')
-                    if "NOSAUKUMS,Mērvienība,CENA (EUR)" in content_str:
-                        with open(LOCAL_PRESETS_PATH, "w", encoding='utf-8') as f:
-                            f.write(content_str)
-                        st.success("Sagataves veiksmīgi ielādētas no GitHub!")
-                        st.session_state.preset_editor_key += 1 
-                        st.rerun()
+                    content_b64 = response.json().get("content", "")
+                    if content_b64:
+                        content_str = base64.b64decode(content_b64).decode("utf-8")
+
+                        # Papildus pārbaude - pārliecināmies, ka failā tiešām ir CSV ar pareizajām kolonnām
+                        if "NOSAUKUMS" in content_str and "CENA (EUR)" in content_str:
+                            with open("presets.csv", "w", encoding='utf-8') as f:
+                                f.write(content_str)
+                            st.success("Sagataves veiksmīgi ielādētas no GitHub!")
+                            st.session_state.preset_editor_key += 1 # Nomainām atslēgu, lai piespiestu st.data_editor pārzīmēties
+                            st.rerun()
+                        else:
+                            st.error("GitHub atgrieza failu, bet tas nav korekts CSV formāts (nesatur vajadzīgās kolonnas). Lūdzu pārbaudiet repozitoriju.")
                     else:
-                        st.error("GitHub atgrieza failu, bet tas nav korekts CSV formāts (nesatur vajadzīgās kolonnas).")
+                        st.error("Neizdevās nolasīt faila saturu no GitHub API.")
                 elif response.status_code == 404:
                     st.error("Fails netika atrasts. Pārliecinieties, ka esat pievienojis GitHub Token vai fails tiešām eksistē.")
                 else:
