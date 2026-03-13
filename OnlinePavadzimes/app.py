@@ -251,7 +251,9 @@ def render_presets_app():
                 # Lai apietu kešatmiņu, varam pievienot headerus (īpaši noderīgi privātiem repozitorijiem, ja ir token)
                 headers = {}
                 if github_token:
-                    headers["Authorization"] = f"token {github_token}"
+                    # Noņemam atstarpes, jaunas rindas un liekas pēdiņas
+                    clean_token = github_token.strip().strip('"').strip("'")
+                    headers["Authorization"] = f"Bearer {clean_token}"
 
                 raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{GITHUB_FILE_PATH}"
                 response = requests.get(raw_url, headers=headers)
