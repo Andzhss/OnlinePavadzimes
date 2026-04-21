@@ -149,7 +149,7 @@ def generate_pdf(data):
         logo = Paragraph("LOGO", style_bold)
     
     doc_type = data.get('doc_type', 'Pavadzīme')
-    display_doc_type = "Rēķins" if "e-rēķins" in doc_type.lower() else doc_type
+    display_doc_type = "Pavadzīme" if "e-rēķins" in doc_type.lower() else doc_type
 
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
