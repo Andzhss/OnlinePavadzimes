@@ -149,12 +149,14 @@ def generate_pdf(data):
         logo = Paragraph("LOGO", style_bold)
     
     doc_type = data.get('doc_type', 'Pavadzīme')
+    display_doc_type = "Rēķins" if doc_type == "E-rēķins" else doc_type
+
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
     due_date = data.get('due_date', '')
     
     header_text = [
-        Paragraph(f"{doc_type} Nr. {doc_id}", style_header_title),
+        Paragraph(f"{display_doc_type} Nr. {doc_id}", style_header_title),
         Spacer(1, 2*mm),
         Paragraph(f"Datums: {date}", style_header_info),
         Paragraph(f"Apmaksāt līdz: {due_date}", style_header_info),
@@ -174,19 +176,53 @@ def generate_pdf(data):
     elements.append(Spacer(1, 5*mm))
     
     # ==========================================
-    # 2. KLIENTS
+    # 2. KLIENTS VAI E-RĒĶINA INFO
     # ==========================================
-    elements.append(Paragraph("KLIENTS", style_bold))
-    elements.append(Spacer(1, 2*mm))
-    
-    elements.append(Paragraph(f"<b>{data.get('client_name', '')}</b>", style_normal))
-    elements.append(Paragraph(f"<i>Adrese: {data.get('client_address', '')}</i>", style_normal))
-    elements.append(Paragraph(f"<i>Reģ. Nr.: {data.get('client_reg_no', '')}</i>", style_normal))
-    elements.append(Paragraph(f"<i>PVN Nr.: {data.get('client_vat_no', '')}</i>", style_normal))
-    
-    elements.append(Spacer(1, 3*mm))
-    elements.append(HorizontalLine(thickness=0.2))
-    elements.append(Spacer(1, 5*mm))
+    if doc_type == "E-rēķins":
+        # Draw red boundary box style for saņēmējs/pasūtītājs as a Table
+        receiver_data = [
+            Paragraph("<b>Saņēmējs</b>", style_normal),
+            Spacer(1, 3*mm),
+            Paragraph(f"<b>{data.get('receiver_name', '')}</b>", style_normal),
+            Paragraph(f"<b>Reģ. Nr.:</b> {data.get('receiver_reg_no', '')}", style_normal)
+        ]
+
+        customer_data = [
+            Paragraph("<b>Pasūtītājs</b>", style_normal),
+            Spacer(1, 3*mm),
+            Paragraph(f"<b>{data.get('customer_name', '')}</b>", style_normal),
+            Paragraph(f"<b>Reģistrācijas nr.:</b> {data.get('customer_reg_no', '')}", style_normal),
+            Paragraph(f"<b>Juridiskā adrese:</b> {data.get('customer_address', '')}", style_normal)
+        ]
+
+        e_invoice_table = Table([[receiver_data, customer_data]], colWidths=[85*mm, 85*mm])
+        e_invoice_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('BOX', (0,0), (-1,-1), 2, colors.red),
+            ('TOPPADDING', (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING', (0,0), (-1,-1), 6),
+            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+        ]))
+        elements.append(e_invoice_table)
+        elements.append(Spacer(1, 5*mm))
+        elements.append(HorizontalLine(thickness=0.2))
+        elements.append(Spacer(1, 5*mm))
+
+        elements.append(Paragraph("<b>Nosūtītājs</b>", style_normal))
+        elements.append(Spacer(1, 3*mm))
+    else:
+        elements.append(Paragraph("KLIENTS", style_bold))
+        elements.append(Spacer(1, 2*mm))
+
+        elements.append(Paragraph(f"<b>{data.get('client_name', '')}</b>", style_normal))
+        elements.append(Paragraph(f"<i>Adrese: {data.get('client_address', '')}</i>", style_normal))
+        elements.append(Paragraph(f"<i>Reģ. Nr.: {data.get('client_reg_no', '')}</i>", style_normal))
+        elements.append(Paragraph(f"<i>PVN Nr.: {data.get('client_vat_no', '')}</i>", style_normal))
+
+        elements.append(Spacer(1, 3*mm))
+        elements.append(HorizontalLine(thickness=0.2))
+        elements.append(Spacer(1, 5*mm))
     
     # ==========================================
     # 3. PIEGĀDĀTĀJS UN BANKA
