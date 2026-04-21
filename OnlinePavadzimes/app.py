@@ -447,13 +447,13 @@ def render_invoice_app():
         col_rec, col_cus = st.columns(2)
         with col_rec:
             st.subheader("Saņēmējs")
-            st.session_state.e_invoice_data['receiver_name'] = st.text_input("Iestādes nosaukums", value=st.session_state.e_invoice_data['receiver_name'], key="e_rec_name")
-            st.session_state.e_invoice_data['receiver_reg_no'] = st.text_input("Reģistrācijas numurs", value=st.session_state.e_invoice_data['receiver_reg_no'], key="e_rec_reg")
+            st.session_state.e_invoice_data['receiver_name'] = st.text_input("Iestādes nosaukums (Saņēmējs)", value=st.session_state.e_invoice_data.get('receiver_name', ''))
+            st.session_state.e_invoice_data['receiver_reg_no'] = st.text_input("Reģistrācijas numurs (Saņēmējs)", value=st.session_state.e_invoice_data.get('receiver_reg_no', ''))
         with col_cus:
             st.subheader("Pasūtītājs")
-            st.session_state.e_invoice_data['customer_name'] = st.text_input("Nosaukums", value=st.session_state.e_invoice_data['customer_name'], key="e_cus_name")
-            st.session_state.e_invoice_data['customer_reg_no'] = st.text_input("Reģistrācijas numurs", value=st.session_state.e_invoice_data['customer_reg_no'], key="e_cus_reg")
-            st.session_state.e_invoice_data['customer_address'] = st.text_input("Juridiskā adrese", value=st.session_state.e_invoice_data['customer_address'], key="e_cus_addr")
+            st.session_state.e_invoice_data['customer_name'] = st.text_input("Nosaukums (Pasūtītājs)", value=st.session_state.e_invoice_data.get('customer_name', ''))
+            st.session_state.e_invoice_data['customer_reg_no'] = st.text_input("Reģistrācijas numurs (Pasūtītājs)", value=st.session_state.e_invoice_data.get('customer_reg_no', ''))
+            st.session_state.e_invoice_data['customer_address'] = st.text_input("Juridiskā adrese (Pasūtītājs)", value=st.session_state.e_invoice_data.get('customer_address', ''))
 
     st.markdown("---")
     st.header("Preces / Pakalpojumi")
