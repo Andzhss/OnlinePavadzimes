@@ -181,7 +181,6 @@ def load_test_invoice(selected_test):
         pass
 
 
-
 GITHUB_REPO = "Andzhss/OnlinePavadzimes"
 GITHUB_FILE_PATH = "OnlinePavadzimes/presets.csv"
 
@@ -413,7 +412,7 @@ def render_invoice_app():
         st.session_state.client_data = {'name': '', 'address': '', 'reg_no': '', 'vat_no': ''}
     if 'e_invoice_data' not in st.session_state:
         st.session_state.e_invoice_data = {
-            'receiver_name': '', 'receiver_reg_no': '',
+            'receiver_name': '', 'receiver_reg_no': '', 'receiver_address': '',
             'customer_name': '', 'customer_reg_no': '', 'customer_address': ''
         }
         
@@ -449,6 +448,7 @@ def render_invoice_app():
             st.subheader("Saņēmējs")
             st.session_state.e_invoice_data['receiver_name'] = st.text_input("Iestādes nosaukums (Saņēmējs)", value=st.session_state.e_invoice_data.get('receiver_name', ''))
             st.session_state.e_invoice_data['receiver_reg_no'] = st.text_input("Reģistrācijas numurs (Saņēmējs)", value=st.session_state.e_invoice_data.get('receiver_reg_no', ''))
+            st.session_state.e_invoice_data['receiver_address'] = st.text_input("Juridiskā adrese (Saņēmējs)", value=st.session_state.e_invoice_data.get('receiver_address', ''))
         with col_cus:
             st.subheader("Pasūtītājs")
             st.session_state.e_invoice_data['customer_name'] = st.text_input("Nosaukums (Pasūtītājs)", value=st.session_state.e_invoice_data.get('customer_name', ''))
@@ -610,6 +610,7 @@ def render_invoice_app():
         'comments': comments,
         'receiver_name': st.session_state.get('e_invoice_data', {}).get('receiver_name', ''),
         'receiver_reg_no': st.session_state.get('e_invoice_data', {}).get('receiver_reg_no', ''),
+        'receiver_address': st.session_state.get('e_invoice_data', {}).get('receiver_address', ''),
         'customer_name': st.session_state.get('e_invoice_data', {}).get('customer_name', ''),
         'customer_reg_no': st.session_state.get('e_invoice_data', {}).get('customer_reg_no', ''),
         'customer_address': st.session_state.get('e_invoice_data', {}).get('customer_address', ''),
