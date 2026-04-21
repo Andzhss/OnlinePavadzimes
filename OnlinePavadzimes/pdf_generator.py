@@ -179,30 +179,28 @@ def generate_pdf(data):
     # 2. KLIENTS VAI E-RĒĶINA INFO
     # ==========================================
     if "e-rēķins" in doc_type.lower():
-        # Draw red boundary box style for saņēmējs/pasūtītājs as a Table
         receiver_data = [
             Paragraph("<b>Saņēmējs</b>", style_normal),
             Spacer(1, 3*mm),
             Paragraph(f"<b>{data.get('receiver_name', '')}</b>", style_normal),
-            Paragraph(f"<b>Reģ. Nr.:</b> {data.get('receiver_reg_no', '')}", style_normal)
+            Paragraph(f"<b>Reģ. Nr.:</b> {data.get('receiver_reg_no', '')}", style_normal),
+            Paragraph(f"<b>Juridiskā adrese:</b> {data.get('receiver_address', '')}", style_normal)
         ]
 
         customer_data = [
             Paragraph("<b>Pasūtītājs</b>", style_normal),
             Spacer(1, 3*mm),
             Paragraph(f"<b>{data.get('customer_name', '')}</b>", style_normal),
-            Paragraph(f"<b>Reģistrācijas nr.:</b> {data.get('customer_reg_no', '')}", style_normal),
+            Paragraph(f"<b>Reģ. Nr.:</b> {data.get('customer_reg_no', '')}", style_normal),
             Paragraph(f"<b>Juridiskā adrese:</b> {data.get('customer_address', '')}", style_normal)
         ]
 
+        # Noņemts sarkanais rāmis un liekie padding, lai izlīdzinātos ar lapas malām
         e_invoice_table = Table([[receiver_data, customer_data]], colWidths=[85*mm, 85*mm])
         e_invoice_table.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('BOX', (0,0), (-1,-1), 2, colors.red),
-            ('TOPPADDING', (0,0), (-1,-1), 6),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-            ('LEFTPADDING', (0,0), (-1,-1), 6),
-            ('RIGHTPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING', (0,0), (-1,-1), 0),
+            ('RIGHTPADDING', (0,0), (-1,-1), 0),
         ]))
         elements.append(e_invoice_table)
         elements.append(Spacer(1, 5*mm))
