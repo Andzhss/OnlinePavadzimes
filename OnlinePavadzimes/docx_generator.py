@@ -77,7 +77,7 @@ def generate_docx(data):
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
     doc_type = data.get('doc_type', 'Pavadzīme')
-    display_doc_type = "Rēķins" if doc_type == "E-rēķins" else doc_type
+    display_doc_type = "Rēķins" if "e-rēķins" in doc_type.lower() else doc_type
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
     due_date = data.get('due_date', '')
@@ -96,7 +96,7 @@ def generate_docx(data):
     # ==========================================
     # 2. KLIENTS VAI E-RĒĶINA INFO
     # ==========================================
-    if doc_type == "E-rēķins":
+    if "e-rēķins" in doc_type.lower():
         table = doc.add_table(rows=1, cols=2)
         table.style = 'Table Grid'
         table.autofit = False

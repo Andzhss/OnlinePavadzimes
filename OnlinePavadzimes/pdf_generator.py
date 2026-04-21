@@ -149,7 +149,7 @@ def generate_pdf(data):
         logo = Paragraph("LOGO", style_bold)
     
     doc_type = data.get('doc_type', 'Pavadzīme')
-    display_doc_type = "Rēķins" if doc_type == "E-rēķins" else doc_type
+    display_doc_type = "Rēķins" if "e-rēķins" in doc_type.lower() else doc_type
 
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
@@ -178,7 +178,7 @@ def generate_pdf(data):
     # ==========================================
     # 2. KLIENTS VAI E-RĒĶINA INFO
     # ==========================================
-    if doc_type == "E-rēķins":
+    if "e-rēķins" in doc_type.lower():
         # Draw red boundary box style for saņēmējs/pasūtītājs as a Table
         receiver_data = [
             Paragraph("<b>Saņēmējs</b>", style_normal),
