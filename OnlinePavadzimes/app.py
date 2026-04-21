@@ -331,7 +331,7 @@ def render_invoice_app():
     default_due_date = st.session_state.get('loaded_due_date', doc_date + datetime.timedelta(days=14))
     due_date = st.sidebar.date_input("Apmaksāt līdz", default_due_date)
     
-    doc_types = ["Pavadzīme", "Rēķins", "Avansa rēķins"]
+    doc_types = ["Pavadzīme", "Rēķins", "Avansa rēķins", "E-rēķins"]
     dt_index = 0
     if 'loaded_doc_type' in st.session_state and st.session_state.loaded_doc_type in doc_types:
         dt_index = doc_types.index(st.session_state.loaded_doc_type)
@@ -409,33 +409,51 @@ def render_invoice_app():
             st.session_state.confirm_delete_history = False
             st.rerun()
     
-    st.header("Klients")
-    col1, col2 = st.columns([1, 1])
-    
     if 'client_data' not in st.session_state:
         st.session_state.client_data = {'name': '', 'address': '', 'reg_no': '', 'vat_no': ''}
+    if 'e_invoice_data' not in st.session_state:
+        st.session_state.e_invoice_data = {
+            'receiver_name': '', 'receiver_reg_no': '',
+            'customer_name': '', 'customer_reg_no': '', 'customer_address': ''
+        }
         
-    with col1:
-        lursoft_url = st.text_input("Lursoft saite")
-        scrape_btn = st.button("Ielādēt datus no Lursoft")
-        if scrape_btn and lursoft_url:
-            with st.spinner("Datu ielasīšana..."):
-                scraped = scrape_lursoft(lursoft_url)
-                if scraped:
-                    if scraped.get('name'): st.session_state.client_data['name'] = scraped.get('name')
-                    if scraped.get('address'): st.session_state.client_data['address'] = scraped.get('address')
-                    if scraped.get('reg_no'): st.session_state.client_data['reg_no'] = scraped.get('reg_no')
-                    st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no')
-                    st.success("Dati veiksmīgi ielasīti!")
-                    st.rerun()
-                else:
-                    st.error("Neizdevās ielasīt datus.")
-    
-    with col2:
-        st.session_state.client_data['name'] = st.text_input("Nosaukums", value=st.session_state.client_data['name'])
-        st.session_state.client_data['address'] = st.text_input("Adrese", value=st.session_state.client_data['address'])
-        st.session_state.client_data['reg_no'] = st.text_input("Reģ. Nr.", value=st.session_state.client_data['reg_no'])
-        st.session_state.client_data['vat_no'] = st.text_input("PVN Nr.", value=st.session_state.client_data['vat_no'])
+    if doc_type != "E-rēķins":
+        st.header("Klients")
+        col1, col2 = st.columns([1, 1])
+
+        with col1:
+            lursoft_url = st.text_input("Lursoft saite")
+            scrape_btn = st.button("Ielādēt datus no Lursoft")
+            if scrape_btn and lursoft_url:
+                with st.spinner("Datu ielasīšana..."):
+                    scraped = scrape_lursoft(lursoft_url)
+                    if scraped:
+                        if scraped.get('name'): st.session_state.client_data['name'] = scraped.get('name')
+                        if scraped.get('address'): st.session_state.client_data['address'] = scraped.get('address')
+                        if scraped.get('reg_no'): st.session_state.client_data['reg_no'] = scraped.get('reg_no')
+                        st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no')
+                        st.success("Dati veiksmīgi ielasīti!")
+                        st.rerun()
+                    else:
+                        st.error("Neizdevās ielasīt datus.")
+
+        with col2:
+            st.session_state.client_data['name'] = st.text_input("Nosaukums", value=st.session_state.client_data['name'])
+            st.session_state.client_data['address'] = st.text_input("Adrese", value=st.session_state.client_data['address'])
+            st.session_state.client_data['reg_no'] = st.text_input("Reģ. Nr.", value=st.session_state.client_data['reg_no'])
+            st.session_state.client_data['vat_no'] = st.text_input("PVN Nr.", value=st.session_state.client_data['vat_no'])
+    else:
+        st.header("Saņēmējs un Pasūtītājs")
+        col_rec, col_cus = st.columns(2)
+        with col_rec:
+            st.subheader("Saņēmējs")
+            st.session_state.e_invoice_data['receiver_name'] = st.text_input("Iestādes nosaukums", value=st.session_state.e_invoice_data['receiver_name'], key="e_rec_name")
+            st.session_state.e_invoice_data['receiver_reg_no'] = st.text_input("Reģistrācijas numurs", value=st.session_state.e_invoice_data['receiver_reg_no'], key="e_rec_reg")
+        with col_cus:
+            st.subheader("Pasūtītājs")
+            st.session_state.e_invoice_data['customer_name'] = st.text_input("Nosaukums", value=st.session_state.e_invoice_data['customer_name'], key="e_cus_name")
+            st.session_state.e_invoice_data['customer_reg_no'] = st.text_input("Reģistrācijas numurs", value=st.session_state.e_invoice_data['customer_reg_no'], key="e_cus_reg")
+            st.session_state.e_invoice_data['customer_address'] = st.text_input("Juridiskā adrese", value=st.session_state.e_invoice_data['customer_address'], key="e_cus_addr")
 
     st.markdown("---")
     st.header("Preces / Pakalpojumi")
@@ -589,7 +607,12 @@ def render_invoice_app():
         'discount_eur': fmt_curr(discount_eur_val), 'raw_discount_eur': discount_eur_val,
         'discount_percent': discount_percent_val, 'subtotal_after_discount': fmt_curr(subtotal_after_discount_val),
         'amount_words': amount_words, 'signatory': full_signatory,
-        'comments': comments
+        'comments': comments,
+        'receiver_name': st.session_state.get('e_invoice_data', {}).get('receiver_name', ''),
+        'receiver_reg_no': st.session_state.get('e_invoice_data', {}).get('receiver_reg_no', ''),
+        'customer_name': st.session_state.get('e_invoice_data', {}).get('customer_name', ''),
+        'customer_reg_no': st.session_state.get('e_invoice_data', {}).get('customer_reg_no', ''),
+        'customer_address': st.session_state.get('e_invoice_data', {}).get('customer_address', ''),
     }
     
     if not edited_df.empty:

@@ -77,12 +77,13 @@ def generate_docx(data):
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
     doc_type = data.get('doc_type', 'Pavadzīme')
+    display_doc_type = "Rēķins" if doc_type == "E-rēķins" else doc_type
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
     due_date = data.get('due_date', '')
     
     # Virsraksts 14pt un Treknrakstā
-    run = p.add_run(f"{doc_type} Nr. {doc_id}\n")
+    run = p.add_run(f"{display_doc_type} Nr. {doc_id}\n")
     run.bold = True
     run.font.size = Pt(14)
     
@@ -93,19 +94,65 @@ def generate_docx(data):
     add_horizontal_line(doc)
     
     # ==========================================
-    # 2. KLIENTS
+    # 2. KLIENTS VAI E-RĒĶINA INFO
     # ==========================================
-    p = doc.add_paragraph()
-    p.add_run("KLIENTS").bold = True
-    
-    p = doc.add_paragraph()
-    p.add_run(data.get('client_name', '')).bold = True
-    p.add_run(f"\nAdrese: {data.get('client_address', '')}").italic = True
-    p.add_run(f"\nReģ. Nr.: {data.get('client_reg_no', '')}").italic = True
-    p.add_run(f"\nPVN Nr.: {data.get('client_vat_no', '')}").italic = True
-    
-    doc.add_paragraph()
-    add_horizontal_line(doc)
+    if doc_type == "E-rēķins":
+        table = doc.add_table(rows=1, cols=2)
+        table.style = 'Table Grid'
+        table.autofit = False
+        table.columns[0].width = Cm(8.5)
+        table.columns[1].width = Cm(8.5)
+
+        # Color table borders red
+        for row in table.rows:
+            for cell in row.cells:
+                tc = cell._tc
+                tcPr = tc.get_or_add_tcPr()
+                borders = parse_xml(r'''
+                    <w:tcBorders xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                        <w:top w:val="single" w:sz="12" w:space="0" w:color="FF0000"/>
+                        <w:left w:val="single" w:sz="12" w:space="0" w:color="FF0000"/>
+                        <w:bottom w:val="single" w:sz="12" w:space="0" w:color="FF0000"/>
+                        <w:right w:val="single" w:sz="12" w:space="0" w:color="FF0000"/>
+                    </w:tcBorders>
+                ''')
+                tcPr.append(borders)
+
+        # Receiver
+        cell_recv = table.cell(0, 0)
+        p_recv = cell_recv.paragraphs[0]
+        p_recv.add_run("Saņēmējs\n\n").bold = True
+        p_recv.add_run(f"{data.get('receiver_name', '')}\n").bold = True
+        p_recv.add_run(f"Reģ. Nr.: ").bold = True
+        p_recv.add_run(f"{data.get('receiver_reg_no', '')}")
+
+        # Customer
+        cell_cust = table.cell(0, 1)
+        p_cust = cell_cust.paragraphs[0]
+        p_cust.add_run("Pasūtītājs\n\n").bold = True
+        p_cust.add_run(f"{data.get('customer_name', '')}\n").bold = True
+        p_cust.add_run(f"Reģistrācijas nr.: ").bold = True
+        p_cust.add_run(f"{data.get('customer_reg_no', '')}\n")
+        p_cust.add_run(f"Juridiskā adrese: ").bold = True
+        p_cust.add_run(f"{data.get('customer_address', '')}")
+
+        doc.add_paragraph()
+        add_horizontal_line(doc)
+
+        p = doc.add_paragraph()
+        p.add_run("Nosūtītājs").bold = True
+    else:
+        p = doc.add_paragraph()
+        p.add_run("KLIENTS").bold = True
+
+        p = doc.add_paragraph()
+        p.add_run(data.get('client_name', '')).bold = True
+        p.add_run(f"\nAdrese: {data.get('client_address', '')}").italic = True
+        p.add_run(f"\nReģ. Nr.: {data.get('client_reg_no', '')}").italic = True
+        p.add_run(f"\nPVN Nr.: {data.get('client_vat_no', '')}").italic = True
+
+        doc.add_paragraph()
+        add_horizontal_line(doc)
     
     # ==========================================
     # 3. PIEGĀDĀTĀJS UN BANKA
