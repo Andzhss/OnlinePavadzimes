@@ -179,24 +179,22 @@ def generate_pdf(data):
     # 2. KLIENTS VAI E-RĒĶINA INFO
     # ==========================================
     if "e-rēķins" in doc_type.lower():
-        receiver_data = [
-            Paragraph("<b>Saņēmējs</b>", style_normal),
-            Spacer(1, 3*mm),
-            Paragraph(f"<b>{data.get('receiver_name', '')}</b>", style_normal),
-            Paragraph(f"<b>Reģ. Nr.:</b> {data.get('receiver_reg_no', '')}", style_normal),
-            Paragraph(f"<b>Juridiskā adrese:</b> {data.get('receiver_address', '')}", style_normal)
-        ]
+        rec_name = data.get('receiver_name', '')
+        rec_reg = data.get('receiver_reg_no', '')
+        rec_addr = data.get('receiver_address', '')
+        
+        cus_name = data.get('customer_name', '')
+        cus_reg = data.get('customer_reg_no', '')
+        cus_addr = data.get('customer_address', '')
 
-        customer_data = [
-            Paragraph("<b>Pasūtītājs</b>", style_normal),
-            Spacer(1, 3*mm),
-            Paragraph(f"<b>{data.get('customer_name', '')}</b>", style_normal),
-            Paragraph(f"<b>Reģ. Nr.:</b> {data.get('customer_reg_no', '')}", style_normal),
-            Paragraph(f"<b>Juridiskā adrese:</b> {data.get('customer_address', '')}", style_normal)
-        ]
+        # Izmantojam vienu HTML stila Paragraph katram, lai garantētu lauku neizzušanu
+        rec_text = f"<b>Saņēmējs</b><br/><br/><b>{rec_name}</b><br/><b>Reģ. Nr.:</b> {rec_reg}<br/><b>Juridiskā adrese:</b> {rec_addr}"
+        cus_text = f"<b>Pasūtītājs</b><br/><br/><b>{cus_name}</b><br/><b>Reģ. Nr.:</b> {cus_reg}<br/><b>Juridiskā adrese:</b> {cus_addr}"
 
-        # Noņemts sarkanais rāmis un liekie padding, lai izlīdzinātos ar lapas malām
-        e_invoice_table = Table([[receiver_data, customer_data]], colWidths=[85*mm, 85*mm])
+        receiver_para = Paragraph(rec_text, style_normal)
+        customer_para = Paragraph(cus_text, style_normal)
+
+        e_invoice_table = Table([[receiver_para, customer_para]], colWidths=[85*mm, 85*mm])
         e_invoice_table.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
             ('LEFTPADDING', (0,0), (-1,-1), 0),
