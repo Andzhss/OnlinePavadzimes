@@ -1,0 +1,2 @@
+doc_id,date,due_date,client_name,client_address,client_reg_no,client_vat_no,doc_type,total,items,comments,created_at
+BR 0049,29.04.2026,13.05.2026,"Omega Properties, SIA","Ādažu nov., Carnikavas pag., Garciems, Briežu iela 10, LV-2163Iepriekšējās adreses",40203352546,LV40203352546,Proformas pavadzīme,"5 451,05","[{""seq"": 1, ""name"": ""Lāzeriekārta; modeļa nr.: KH7050; 80W"", ""unit"": ""Gab."", ""qty"": ""1.0"", ""price"": ""4 505,00"", ""total"": ""4 505,00"", ""raw_qty"": 1.0, ""raw_price"": 4505.0}]",,2026-04-29 07:45:02
