@@ -40,11 +40,12 @@ GITHUB_TEST_HIST_PATH  = "OnlinePavadzimes/test_invoice_history.csv"
 GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9"
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
-# CSV kolonnas vēsturei
+# CSV kolonnas vēsturei — JAUNAIS FORMĀTS
 HISTORY_COLS = [
-    'doc_id', 'date', 'due_date', 'client_name', 'client_address',
-    'client_reg_no', 'client_vat_no', 'doc_type', 'total',
-    'items', 'comments', 'created_at'
+    'kartas_nr', 'datums', 'pr_partneris', 'pr_pvn_nr',
+    'pr_datums', 'pr_numurs', 'darijuma_apraksts',
+    'vertiba_bez_pvn', 'dabas_resursi', 'atlaides', 'pvn_summa', 'kopeja_summa',
+    'due_date', 'client_reg_no', 'client_address', 'doc_type', 'items_json', 'comments', 'created_at'
 ]
 
 # ---------------------------------------------------------------------------
@@ -145,58 +146,169 @@ def upload_to_drive(file_buffer, filename, mime_type):
 # Vēstures funkcijas (CSV bāzētas)
 # ---------------------------------------------------------------------------
 
+def _fmt(val):
+    """Formatē skaitli latviešu stilā: 1 234,56"""
+    try:
+        return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
+    except Exception:
+        return str(val)
+
+
+def _migrate_old_history(df):
+    """Pārvērš veco CSV formātu (ar doc_id u.c.) uz jauno formātu."""
+    records = []
+    for i, (_, row) in enumerate(df.iterrows(), 1):
+        items_str = row.get('items', '[]')
+        try:
+            items_list = json.loads(items_str) if pd.notna(items_str) and items_str else []
+        except Exception:
+            items_list = []
+
+        # Aprēķina bāzes summu un aprakstu no items
+        base = sum(
+            float(it.get('raw_qty', 0) or 0) * float(it.get('raw_price', 0) or 0)
+            for it in items_list
+        )
+        try:
+            total_val = float(str(row.get('total', '0')).replace('\u00a0', '').replace(' ', '').replace(',', '.'))
+        except Exception:
+            total_val = 0.0
+
+        vat = round(total_val - base, 2)
+        descriptions = [it.get('name', '') for it in items_list if it.get('name')]
+
+        rec = {
+            'kartas_nr':         i,
+            'datums':            row.get('date', ''),
+            'pr_partneris':      row.get('client_name', ''),
+            'pr_pvn_nr':         row.get('client_vat_no', row.get('client_reg_no', '')),
+            'pr_datums':         row.get('date', ''),
+            'pr_numurs':         row.get('doc_id', ''),
+            'darijuma_apraksts': '; '.join(descriptions),
+            'vertiba_bez_pvn':   _fmt(base),
+            'dabas_resursi':     '',
+            'atlaides':          _fmt(0),
+            'pvn_summa':         _fmt(vat),
+            'kopeja_summa':      row.get('total', ''),
+            'due_date':          row.get('due_date', ''),
+            'client_reg_no':     row.get('client_reg_no', ''),
+            'client_address':    row.get('client_address', ''),
+            'doc_type':          row.get('doc_type', ''),
+            'items_json':        items_str if pd.notna(items_str) else '[]',
+            'comments':          row.get('comments', ''),
+            'created_at':        row.get('created_at', ''),
+            # Aliasi priekš load_invoice_into_form un sidebar
+            'items':             items_list,
+            'doc_id':            row.get('doc_id', ''),
+            'client_name':       row.get('client_name', ''),
+            'client_vat_no':     row.get('client_vat_no', ''),
+            'date':              row.get('date', ''),
+            'total':             row.get('total', ''),
+        }
+        records.append(rec)
+    return records
+
+
 def load_history(local_path):
-    """Ielādē vēsturi no lokālā CSV. Atgriež sarakstu ar dict."""
+    """Ielādē vēsturi no lokālā CSV. Automātiski migrē veco formātu."""
     if not os.path.exists(local_path):
         return []
     try:
         df = pd.read_csv(local_path, dtype=str)
         if df.empty:
             return []
+
+        # Ja fails ir vecajā formātā — migrē
+        if 'doc_id' in df.columns and 'kartas_nr' not in df.columns:
+            return _migrate_old_history(df)
+
         records = []
         for _, row in df.iterrows():
             rec = row.to_dict()
-            items_str = rec.get('items', '[]')
+            # Atjauno items no items_json
+            items_str = rec.get('items_json', '[]')
             try:
                 rec['items'] = json.loads(items_str) if pd.notna(items_str) and items_str else []
             except Exception:
                 rec['items'] = []
+            # Aliasi priekš load_invoice_into_form un sidebar
+            rec['doc_id']        = rec.get('pr_numurs', '')
+            rec['client_name']   = rec.get('pr_partneris', '')
+            rec['client_vat_no'] = rec.get('pr_pvn_nr', '')
+            rec['date']          = rec.get('datums', '')
+            rec['total']         = rec.get('kopeja_summa', '')
             records.append(rec)
         return records
     except Exception:
         return []
+
 
 def _history_to_df(history):
     """Pārvērš vēstures sarakstu par DataFrame CSV saglabāšanai."""
     rows = []
     for entry in history:
         row = {col: entry.get(col, '') for col in HISTORY_COLS}
-        if isinstance(row['items'], list):
-            row['items'] = json.dumps(row['items'], ensure_ascii=False)
+        # items_json — ja ir saraksts, serializē
+        items_val = entry.get('items_json', entry.get('items', []))
+        if isinstance(items_val, list):
+            row['items_json'] = json.dumps(items_val, ensure_ascii=False)
+        else:
+            row['items_json'] = items_val if items_val else '[]'
         rows.append(row)
     return pd.DataFrame(rows, columns=HISTORY_COLS) if rows else pd.DataFrame(columns=HISTORY_COLS)
+
 
 def save_to_history(invoice_data, local_path, github_path):
     """Saglabā pavadzīmi lokālā CSV un augšupielādē GitHub."""
     history = load_history(local_path)
+
+    items       = invoice_data.get('items', [])
+    raw_total   = float(invoice_data.get('raw_total', 0) or 0)
+    raw_discount = float(invoice_data.get('raw_discount_eur', 0) or 0)
+    # Bez PVN = kopā / 1.21
+    base_amount = round(raw_total / 1.21, 2)
+    vat_amount  = round(raw_total - base_amount, 2)
+    descriptions = [it.get('name', '') for it in items if it.get('name')]
+    pr_numurs    = invoice_data.get('doc_id', '')
+
+    # Nākamais kārtas numurs
+    existing_nums = [int(str(e.get('kartas_nr', 0)).strip() or 0) for e in history]
+    next_kartas   = max(existing_nums, default=0) + 1
+
     new_entry = {
-        'doc_id':          invoice_data['doc_id'],
-        'date':            invoice_data['date'],
-        'due_date':        invoice_data.get('due_date', ''),
-        'client_name':     invoice_data['client_name'],
-        'client_address':  invoice_data.get('client_address', ''),
-        'client_reg_no':   invoice_data.get('client_reg_no', ''),
-        'client_vat_no':   invoice_data.get('client_vat_no', ''),
-        'doc_type':        invoice_data['doc_type'],
-        'total':           invoice_data.get('total', '0,00'),
-        'items':           invoice_data.get('items', []),
-        'comments':        invoice_data.get('comments', ''),
-        'created_at':      datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        'kartas_nr':         next_kartas,
+        'datums':            invoice_data.get('date', ''),
+        'pr_partneris':      invoice_data.get('client_name', ''),
+        'pr_pvn_nr':         invoice_data.get('client_vat_no', ''),
+        'pr_datums':         invoice_data.get('date', ''),
+        'pr_numurs':         pr_numurs,
+        'darijuma_apraksts': '; '.join(descriptions),
+        'vertiba_bez_pvn':   _fmt(base_amount),
+        'dabas_resursi':     '',
+        'atlaides':          _fmt(raw_discount),
+        'pvn_summa':         _fmt(vat_amount),
+        'kopeja_summa':      invoice_data.get('total', ''),
+        'due_date':          invoice_data.get('due_date', ''),
+        'client_reg_no':     invoice_data.get('client_reg_no', ''),
+        'client_address':    invoice_data.get('client_address', ''),
+        'doc_type':          invoice_data.get('doc_type', ''),
+        'items_json':        json.dumps(items, ensure_ascii=False),
+        'comments':          invoice_data.get('comments', ''),
+        'created_at':        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        # Aliasi
+        'items':             items,
+        'doc_id':            pr_numurs,
+        'client_name':       invoice_data.get('client_name', ''),
+        'client_vat_no':     invoice_data.get('client_vat_no', ''),
+        'date':              invoice_data.get('date', ''),
+        'total':             invoice_data.get('total', ''),
     }
-    # Atjaunina vai pievieno
+
+    # Atjaunina esošu vai pievieno jaunu
     updated = False
     for i, entry in enumerate(history):
-        if entry.get('doc_id') == new_entry['doc_id']:
+        if entry.get('pr_numurs') == pr_numurs or entry.get('doc_id') == pr_numurs:
+            new_entry['kartas_nr'] = entry.get('kartas_nr', next_kartas)
             history[i] = new_entry
             updated = True
             break
@@ -209,23 +321,27 @@ def save_to_history(invoice_data, local_path, github_path):
 
     # Saglabā GitHub
     if get_github_token():
-        push_csv_to_github(df, github_path, f"Pievieno {invoice_data['doc_id']}")
+        push_csv_to_github(df, github_path, f"Pievieno {pr_numurs}")
+
 
 def sync_history_from_github(local_path, github_path):
     """Lejupielādē vēsturi no GitHub un saglabā lokāli."""
     content = fetch_csv_from_github(github_path)
-    if content and 'doc_id' in content:
+    if content and ('doc_id' in content or 'kartas_nr' in content):
         with open(local_path, 'w', encoding='utf-8') as f:
             f.write(content)
         return True
     return False
+
 
 def get_next_invoice_number(history):
     if not history:
         return 49
     max_num = 0
     for entry in history:
-        parts = str(entry.get('doc_id', '')).split()
+        # Atbalsta gan jauno (pr_numurs), gan veco (doc_id) formātu
+        doc = str(entry.get('pr_numurs', entry.get('doc_id', '')))
+        parts = doc.split()
         if len(parts) > 1 and parts[-1].isdigit():
             num = int(parts[-1])
             if num > max_num:
@@ -238,16 +354,17 @@ def get_next_invoice_number(history):
 
 def load_invoice_into_form(entry):
     """Ielādē vēstures ierakstu formas laukos."""
-    doc_id = str(entry.get('doc_id', ''))
+    # Atbalsta gan jauno, gan veco formātu
+    doc_id = str(entry.get('pr_numurs', entry.get('doc_id', '')))
     parts = doc_id.split()
     if len(parts) > 1 and parts[-1].isdigit():
         st.session_state.doc_number_input = int(parts[-1])
 
     st.session_state.client_data = {
-        'name':    entry.get('client_name', ''),
+        'name':    entry.get('pr_partneris', entry.get('client_name', '')),
         'address': entry.get('client_address', ''),
         'reg_no':  entry.get('client_reg_no', ''),
-        'vat_no':  entry.get('client_vat_no', '')
+        'vat_no':  entry.get('pr_pvn_nr', entry.get('client_vat_no', ''))
     }
 
     items_raw = entry.get('items', [])
@@ -274,11 +391,11 @@ def load_invoice_into_form(entry):
         "Proformas avansa rēķins": "Avansa rēķins"
     }
     loaded_type = proforma_map.get(loaded_type, loaded_type)
-    st.session_state.loaded_doc_type    = loaded_type
-    st.session_state.loaded_comments    = entry.get('comments', '')
+    st.session_state.loaded_doc_type = loaded_type
+    st.session_state.loaded_comments = entry.get('comments', '')
 
     try:
-        date_str = entry.get('date', '')
+        date_str = entry.get('datums', entry.get('date', ''))
         if date_str:
             st.session_state.loaded_doc_date = datetime.datetime.strptime(date_str, "%d.%m.%Y").date()
         due_str = entry.get('due_date', '')
@@ -432,7 +549,7 @@ def render_invoice_app():
     st.sidebar.subheader("📂 Atvērt iepriekšējo pavadzīmi")
     if history:
         hist_options = {
-            f"{e['doc_id']} — {e.get('client_name', '')} ({e.get('date', '')})": e
+            f"{e.get('pr_numurs', e.get('doc_id',''))} — {e.get('pr_partneris', e.get('client_name',''))} ({e.get('datums', e.get('date',''))})": e
             for e in reversed(history)
         }
         selected_hist_label = st.sidebar.selectbox(
@@ -450,7 +567,7 @@ def render_invoice_app():
     st.sidebar.subheader("🔄 Testa pavadzīmju ielāde")
     if test_history:
         test_options = {
-            f"{t['doc_id']} — {t.get('client_name', '')} ({t.get('date', '')})": t
+            f"{t.get('pr_numurs', t.get('doc_id',''))} — {t.get('pr_partneris', t.get('client_name',''))} ({t.get('datums', t.get('date',''))})": t
             for t in reversed(test_history)
         }
         selected_test_label = st.sidebar.selectbox("Izvēlies testa dokumentu", list(test_options.keys()))
@@ -828,53 +945,25 @@ def render_invoice_app():
     st.markdown("---")
     with st.expander("🗄️ Rēķinu vēsture (Izrakstītie)", expanded=False):
         if history:
-            def fmt_lv(val):
-                return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
-
             rows_html = ""
-            for i, entry in enumerate(reversed(history), 1):
-                items_list = entry.get('items', [])
-                base_amount = 0.0
-                descriptions = []
-                for item in items_list:
-                    try:
-                        raw_qty   = float(item.get('raw_qty', 0) or 0)
-                        raw_price = float(item.get('raw_price', 0) or 0)
-                        base_amount += raw_qty * raw_price
-                        name = item.get('name', '')
-                        if name:
-                            descriptions.append(name)
-                    except Exception:
-                        pass
-
-                total_str = str(entry.get('total', '0'))
-                try:
-                    total_val = float(total_str.replace('\u00a0', '').replace(' ', '').replace(',', '.'))
-                except Exception:
-                    total_val = 0.0
-
-                vat_amount   = round(total_val - base_amount, 2)
-                description  = "; ".join(descriptions)
-                client_vat   = entry.get('client_vat_no', entry.get('client_reg_no', ''))
-
+            for entry in history:
                 rows_html += f"""
                 <tr>
-                    <td style="text-align:center">{i}</td>
-                    <td style="text-align:center">{entry.get('date', '')}</td>
-                    <td>{entry.get('client_name', '')}</td>
-                    <td style="text-align:center">{client_vat}</td>
-                    <td style="text-align:center">{entry.get('date', '')}</td>
-                    <td style="text-align:center">{entry.get('doc_id', '')}</td>
-                    <td style="max-width:220px; white-space:normal; word-break:break-word">{description}</td>
-                    <td style="text-align:right">{fmt_lv(base_amount)}</td>
-                    <td style="text-align:center">—</td>
-                    <td style="text-align:center">—</td>
-                    <td style="text-align:right">{fmt_lv(vat_amount)}</td>
-                    <td style="text-align:right; font-weight:bold">{entry.get('total', '')}</td>
-                </tr>
-                """
+                    <td style="text-align:center">{entry.get('kartas_nr', '')}</td>
+                    <td style="text-align:center">{entry.get('datums', entry.get('date', ''))}</td>
+                    <td>{entry.get('pr_partneris', entry.get('client_name', ''))}</td>
+                    <td style="text-align:center">{entry.get('pr_pvn_nr', entry.get('client_vat_no', ''))}</td>
+                    <td style="text-align:center">{entry.get('pr_datums', entry.get('date', ''))}</td>
+                    <td style="text-align:center">{entry.get('pr_numurs', entry.get('doc_id', ''))}</td>
+                    <td style="max-width:220px; white-space:normal; word-break:break-word">{entry.get('darijuma_apraksts', '')}</td>
+                    <td style="text-align:right">{entry.get('vertiba_bez_pvn', '')}</td>
+                    <td style="text-align:center">{entry.get('dabas_resursi', '') or '—'}</td>
+                    <td style="text-align:right">{entry.get('atlaides', '') or '—'}</td>
+                    <td style="text-align:right">{entry.get('pvn_summa', '')}</td>
+                    <td style="text-align:right; font-weight:bold">{entry.get('kopeja_summa', entry.get('total', ''))}</td>
+                </tr>"""
 
-            table_html = f"""
+            st.markdown(f"""
             <style>
             .inv-hist {{
                 border-collapse: collapse;
@@ -907,7 +996,7 @@ def render_invoice_app():
                         <th rowspan="2" style="min-width:80px">Datums</th>
                         <th rowspan="2" style="min-width:150px">PR norādītais<br>darījuma partneris</th>
                         <th rowspan="2" style="min-width:140px">PR norādītā darījuma<br>partnera reģistrācijas<br>vai PVN maksātāja Nr.</th>
-                        <th colspan="2" style="min-width:170px">PR datums un numurs</th>
+                        <th colspan="2">PR datums un numurs</th>
                         <th rowspan="2" style="min-width:180px">Darījuma apraksts</th>
                         <th rowspan="2" style="min-width:100px">PR norādītā<br>darījuma vērtība<br>(bez PVN)</th>
                         <th rowspan="2" style="min-width:100px">Dabas resursu<br>un akcīzes<br>nodokļi</th>
@@ -920,13 +1009,10 @@ def render_invoice_app():
                         <th style="min-width:90px">Numurs</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {rows_html}
-                </tbody>
+                <tbody>{rows_html}</tbody>
             </table>
             </div>
-            """
-            st.markdown(table_html, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
         else:
             st.info("Vēsture ir tukša.")
 
