@@ -497,6 +497,139 @@ def render_presets_app():
 # render_invoice_app
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Excel ģenerators vēsturei
+# ---------------------------------------------------------------------------
+
+def generate_history_excel(history):
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import (
+        PatternFill, Font, Alignment, Border, Side
+    )
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Rēķinu vēsture"
+
+    # --- Stili ---
+    header_fill   = PatternFill("solid", fgColor="D9E1F2")
+    subhead_fill  = PatternFill("solid", fgColor="E9EEF8")
+    even_fill     = PatternFill("solid", fgColor="F2F5FC")
+    odd_fill      = PatternFill("solid", fgColor="FFFFFF")
+
+    header_font   = Font(name="Calibri", bold=True, size=9)
+    data_font     = Font(name="Calibri", size=9)
+
+    center_align  = Alignment(horizontal="center", vertical="center",
+                               wrap_text=True)
+    left_align    = Alignment(horizontal="left",   vertical="center",
+                               wrap_text=True)
+    right_align   = Alignment(horizontal="right",  vertical="center",
+                               wrap_text=True)
+
+    thin = Side(style="thin", color="AAAAAA")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # --- 1. galvenes rinda (merged) ---
+    headers_row1 = [
+        ("Kārtas\nNr.",                                              1, "center"),
+        ("Datums",                                                   1, "center"),
+        ("PR norādītais\ndarījuma partneris",                        1, "left"),
+        ("PR norādītā darījuma partnera\nreģistrācijas vai PVN maksātāja Nr.", 1, "center"),
+        ("PR datums un numurs",                                      2, "center"),  # spans 2
+        ("Darījuma apraksts",                                        1, "left"),
+        ("PR norādītā\ndarījuma vērtība\n(bez PVN)",                 1, "right"),
+        ("Dabas resursu\nun akcīzes\nnodokļi",                       1, "right"),
+        ("Piešķirtās\natlaides",                                     1, "right"),
+        ("PVN\nsumma",                                               1, "right"),
+        ("Kopējā\nsumma",                                            1, "right"),
+    ]
+
+    col = 1
+    for text, span, align in headers_row1:
+        cell = ws.cell(row=1, column=col, value=text)
+        cell.fill      = header_fill
+        cell.font      = header_font
+        cell.border    = border
+        cell.alignment = Alignment(
+            horizontal=align, vertical="center", wrap_text=True
+        )
+        if span == 2:
+            ws.merge_cells(
+                start_row=1, start_column=col,
+                end_row=1,   end_column=col + 1
+            )
+            # Piešķir stilu arī otrai kolonnai
+            ws.cell(row=1, column=col+1).fill   = header_fill
+            ws.cell(row=1, column=col+1).border = border
+        else:
+            # Apvieno ar otro rindu (rowspan=2)
+            ws.merge_cells(
+                start_row=1, start_column=col,
+                end_row=2,   end_column=col
+            )
+        col += span
+
+    # --- 2. galvenes rinda — tikai PR datums/numurs apakškolonnas ---
+    # Kolonnas ar "PR datums un numurs" ir 5. un 6. (0-indexed: col 5,6)
+    pr_col = 5  # kur sākas "PR datums un numurs"
+    for sub_col, sub_text in [(pr_col, "Datums"), (pr_col + 1, "Numurs")]:
+        cell = ws.cell(row=2, column=sub_col, value=sub_text)
+        cell.fill      = subhead_fill
+        cell.font      = header_font
+        cell.border    = border
+        cell.alignment = center_align
+
+    ws.row_dimensions[1].height = 40
+    ws.row_dimensions[2].height = 18
+
+    # --- Datu rindas ---
+    for r_idx, entry in enumerate(history, start=3):
+        is_even = (r_idx % 2 == 0)
+        row_fill = even_fill if is_even else odd_fill
+
+        values = [
+            (entry.get('kartas_nr', ''),                                         "center"),
+            (entry.get('datums', entry.get('date', '')),                         "center"),
+            (entry.get('pr_partneris', entry.get('client_name', '')),            "left"),
+            (entry.get('pr_pvn_nr', entry.get('client_vat_no', '')),             "center"),
+            (entry.get('pr_datums', entry.get('date', '')),                      "center"),
+            (entry.get('pr_numurs', entry.get('doc_id', '')),                    "center"),
+            (entry.get('darijuma_apraksts', ''),                                 "left"),
+            (entry.get('vertiba_bez_pvn', ''),                                   "right"),
+            (entry.get('dabas_resursi', '') or '—',                              "right"),
+            (entry.get('atlaides', '') or '—',                                   "right"),
+            (entry.get('pvn_summa', ''),                                         "right"),
+            (entry.get('kopeja_summa', entry.get('total', '')),                  "right"),
+        ]
+
+        for c_idx, (val, align) in enumerate(values, start=1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=str(val) if val else '')
+            cell.fill   = row_fill
+            cell.font   = data_font
+            cell.border = border
+            cell.alignment = Alignment(
+                horizontal=align, vertical="center", wrap_text=(align == "left")
+            )
+
+        ws.row_dimensions[r_idx].height = 15
+
+    # --- Kolonnu platumi ---
+    col_widths = [8, 11, 28, 22, 11, 11, 40, 14, 12, 12, 12, 13]
+    for i, w in enumerate(col_widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    # --- Iesaldē galveni ---
+    ws.freeze_panes = "A3"
+
+    # --- Saglabā ---
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
 def render_invoice_app():
     history      = load_history(LOCAL_HISTORY_PATH)
     test_history = load_history(LOCAL_TEST_HIST_PATH)
@@ -945,6 +1078,18 @@ def render_invoice_app():
     st.markdown("---")
     with st.expander("🗄️ Rēķinu vēsture (Izrakstītie)", expanded=False):
         if history:
+            with st.expander("🗄️ Rēķinu vēsture (Izrakstītie)", expanded=False):
+        if history:
+            # ← PIEVIENO ŠO BLOKU:
+            excel_bytes = generate_history_excel(history)
+            st.download_button(
+                label="📥 Lejupielādēt kā Excel",
+                data=excel_bytes,
+                file_name=f"rekinu_vesture_{datetime.date.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            st.markdown("---")
+            # ← TĀLĀK PALIEK VISS KĀ BIJA (rows_html = "" utt.)
             rows_html = ""
             for entry in history:
                 rows_html += f"""
