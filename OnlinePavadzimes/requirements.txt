@@ -12,3 +12,4 @@ google-auth-oauthlib
 flask
 flask-cors
 PyGithub
+openpyxl
