@@ -828,17 +828,105 @@ def render_invoice_app():
     st.markdown("---")
     with st.expander("🗄️ Rēķinu vēsture (Izrakstītie)", expanded=False):
         if history:
-            hist_df      = pd.DataFrame(history)
-            display_cols = ['doc_id', 'date', 'client_name', 'doc_type', 'total', 'created_at']
-            rename_map   = {
-                'doc_id': 'Nr.', 'date': 'Datums', 'client_name': 'Klients',
-                'doc_type': 'Tips', 'total': 'Summa (EUR)', 'created_at': 'Izveidots'
-            }
-            valid_cols = [c for c in display_cols if c in hist_df.columns]
-            st.dataframe(
-                hist_df[valid_cols].rename(columns=rename_map).iloc[::-1].reset_index(drop=True),
-                use_container_width=True
-            )
+            def fmt_lv(val):
+                return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
+
+            rows_html = ""
+            for i, entry in enumerate(reversed(history), 1):
+                items_list = entry.get('items', [])
+                base_amount = 0.0
+                descriptions = []
+                for item in items_list:
+                    try:
+                        raw_qty   = float(item.get('raw_qty', 0) or 0)
+                        raw_price = float(item.get('raw_price', 0) or 0)
+                        base_amount += raw_qty * raw_price
+                        name = item.get('name', '')
+                        if name:
+                            descriptions.append(name)
+                    except Exception:
+                        pass
+
+                total_str = str(entry.get('total', '0'))
+                try:
+                    total_val = float(total_str.replace('\u00a0', '').replace(' ', '').replace(',', '.'))
+                except Exception:
+                    total_val = 0.0
+
+                vat_amount   = round(total_val - base_amount, 2)
+                description  = "; ".join(descriptions)
+                client_vat   = entry.get('client_vat_no', entry.get('client_reg_no', ''))
+
+                rows_html += f"""
+                <tr>
+                    <td style="text-align:center">{i}</td>
+                    <td style="text-align:center">{entry.get('date', '')}</td>
+                    <td>{entry.get('client_name', '')}</td>
+                    <td style="text-align:center">{client_vat}</td>
+                    <td style="text-align:center">{entry.get('date', '')}</td>
+                    <td style="text-align:center">{entry.get('doc_id', '')}</td>
+                    <td style="max-width:220px; white-space:normal; word-break:break-word">{description}</td>
+                    <td style="text-align:right">{fmt_lv(base_amount)}</td>
+                    <td style="text-align:center">—</td>
+                    <td style="text-align:center">—</td>
+                    <td style="text-align:right">{fmt_lv(vat_amount)}</td>
+                    <td style="text-align:right; font-weight:bold">{entry.get('total', '')}</td>
+                </tr>
+                """
+
+            table_html = f"""
+            <style>
+            .inv-hist {{
+                border-collapse: collapse;
+                font-size: 11px;
+                width: 100%;
+            }}
+            .inv-hist th, .inv-hist td {{
+                border: 1px solid #bbb;
+                padding: 4px 7px;
+                vertical-align: middle;
+            }}
+            .inv-hist thead th {{
+                background-color: #e8ecf0;
+                text-align: center;
+                font-weight: bold;
+                line-height: 1.3;
+            }}
+            .inv-hist tbody tr:nth-child(even) {{
+                background-color: #f5f8fb;
+            }}
+            .inv-hist tbody tr:hover {{
+                background-color: #dceeff;
+            }}
+            </style>
+            <div style="overflow-x:auto; margin-top:10px">
+            <table class="inv-hist">
+                <thead>
+                    <tr>
+                        <th rowspan="2" style="min-width:50px">Kārtas<br>Nr.</th>
+                        <th rowspan="2" style="min-width:80px">Datums</th>
+                        <th rowspan="2" style="min-width:150px">PR norādītais<br>darījuma partneris</th>
+                        <th rowspan="2" style="min-width:140px">PR norādītā darījuma<br>partnera reģistrācijas<br>vai PVN maksātāja Nr.</th>
+                        <th colspan="2" style="min-width:170px">PR datums un numurs</th>
+                        <th rowspan="2" style="min-width:180px">Darījuma apraksts</th>
+                        <th rowspan="2" style="min-width:100px">PR norādītā<br>darījuma vērtība<br>(bez PVN)</th>
+                        <th rowspan="2" style="min-width:100px">Dabas resursu<br>un akcīzes<br>nodokļi</th>
+                        <th rowspan="2" style="min-width:90px">Piešķirtās<br>atlaides</th>
+                        <th rowspan="2" style="min-width:90px">PVN summa</th>
+                        <th rowspan="2" style="min-width:100px">Kopējā<br>summa</th>
+                    </tr>
+                    <tr>
+                        <th style="min-width:80px">Datums</th>
+                        <th style="min-width:90px">Numurs</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+            </div>
+            """
+            st.markdown(table_html, unsafe_allow_html=True)
         else:
             st.info("Vēsture ir tukša.")
 
