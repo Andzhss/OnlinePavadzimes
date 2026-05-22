@@ -57,7 +57,6 @@ def get_github_token():
     return token.strip().strip('"').strip("'") if token else ""
 
 def fetch_csv_from_github(github_path):
-    """Atgriež CSV saturu kā tekstu vai None, ja neizdevās."""
     token = get_github_token()
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{github_path}"
     headers = {"Accept": "application/vnd.github.v3+json"}
@@ -74,7 +73,6 @@ def fetch_csv_from_github(github_path):
     return None
 
 def push_csv_to_github(df, github_path, commit_message="Update CSV via App"):
-    """Saglabā DataFrame kā CSV uz GitHub. Atgriež (True/False, ziņojums)."""
     token = get_github_token()
     if not token:
         return False, "Nav GitHub Token"
@@ -86,14 +84,11 @@ def push_csv_to_github(df, github_path, commit_message="Update CSV via App"):
         }
         r = requests.get(url, headers=headers, timeout=10)
         sha = r.json().get("sha", "") if r.status_code == 200 else ""
-
         csv_content = df.to_csv(index=False)
         encoded = base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
-
         data = {"message": commit_message, "content": encoded, "branch": "main"}
         if sha:
             data["sha"] = sha
-
         put_r = requests.put(url, headers=headers, json=data, timeout=15)
         if put_r.status_code in [200, 201]:
             return True, "Veiksmīgi saglabāts GitHub!"
@@ -147,15 +142,12 @@ def upload_to_drive(file_buffer, filename, mime_type):
 # ---------------------------------------------------------------------------
 
 def _fmt(val):
-    """Formatē skaitli latviešu stilā: 1 234,56"""
     try:
         return f"{float(val):,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
     except Exception:
         return str(val)
 
-
 def _migrate_old_history(df):
-    """Pārvērš veco CSV formātu (ar doc_id u.c.) uz jauno formātu."""
     records = []
     for i, (_, row) in enumerate(df.iterrows(), 1):
         items_str = row.get('items', '[]')
@@ -163,8 +155,6 @@ def _migrate_old_history(df):
             items_list = json.loads(items_str) if pd.notna(items_str) and items_str else []
         except Exception:
             items_list = []
-
-        # Aprēķina bāzes summu un aprakstu no items
         base = sum(
             float(it.get('raw_qty', 0) or 0) * float(it.get('raw_price', 0) or 0)
             for it in items_list
@@ -173,10 +163,8 @@ def _migrate_old_history(df):
             total_val = float(str(row.get('total', '0')).replace('\u00a0', '').replace(' ', '').replace(',', '.'))
         except Exception:
             total_val = 0.0
-
         vat = round(total_val - base, 2)
         descriptions = [it.get('name', '') for it in items_list if it.get('name')]
-
         rec = {
             'kartas_nr':         i,
             'datums':            row.get('date', ''),
@@ -197,7 +185,6 @@ def _migrate_old_history(df):
             'items_json':        items_str if pd.notna(items_str) else '[]',
             'comments':          row.get('comments', ''),
             'created_at':        row.get('created_at', ''),
-            # Aliasi priekš load_invoice_into_form un sidebar
             'items':             items_list,
             'doc_id':            row.get('doc_id', ''),
             'client_name':       row.get('client_name', ''),
@@ -208,30 +195,23 @@ def _migrate_old_history(df):
         records.append(rec)
     return records
 
-
 def load_history(local_path):
-    """Ielādē vēsturi no lokālā CSV. Automātiski migrē veco formātu."""
     if not os.path.exists(local_path):
         return []
     try:
         df = pd.read_csv(local_path, dtype=str)
         if df.empty:
             return []
-
-        # Ja fails ir vecajā formātā — migrē
         if 'doc_id' in df.columns and 'kartas_nr' not in df.columns:
             return _migrate_old_history(df)
-
         records = []
         for _, row in df.iterrows():
             rec = row.to_dict()
-            # Atjauno items no items_json
             items_str = rec.get('items_json', '[]')
             try:
                 rec['items'] = json.loads(items_str) if pd.notna(items_str) and items_str else []
             except Exception:
                 rec['items'] = []
-            # Aliasi priekš load_invoice_into_form un sidebar
             rec['doc_id']        = rec.get('pr_numurs', '')
             rec['client_name']   = rec.get('pr_partneris', '')
             rec['client_vat_no'] = rec.get('pr_pvn_nr', '')
@@ -242,13 +222,10 @@ def load_history(local_path):
     except Exception:
         return []
 
-
 def _history_to_df(history):
-    """Pārvērš vēstures sarakstu par DataFrame CSV saglabāšanai."""
     rows = []
     for entry in history:
         row = {col: entry.get(col, '') for col in HISTORY_COLS}
-        # items_json — ja ir saraksts, serializē
         items_val = entry.get('items_json', entry.get('items', []))
         if isinstance(items_val, list):
             row['items_json'] = json.dumps(items_val, ensure_ascii=False)
@@ -257,24 +234,17 @@ def _history_to_df(history):
         rows.append(row)
     return pd.DataFrame(rows, columns=HISTORY_COLS) if rows else pd.DataFrame(columns=HISTORY_COLS)
 
-
 def save_to_history(invoice_data, local_path, github_path):
-    """Saglabā pavadzīmi lokālā CSV un augšupielādē GitHub."""
     history = load_history(local_path)
-
-    items       = invoice_data.get('items', [])
-    raw_total   = float(invoice_data.get('raw_total', 0) or 0)
+    items        = invoice_data.get('items', [])
+    raw_total    = float(invoice_data.get('raw_total', 0) or 0)
     raw_discount = float(invoice_data.get('raw_discount_eur', 0) or 0)
-    # Bez PVN = kopā / 1.21
-    base_amount = round(raw_total / 1.21, 2)
-    vat_amount  = round(raw_total - base_amount, 2)
+    base_amount  = round(raw_total / 1.21, 2)
+    vat_amount   = round(raw_total - base_amount, 2)
     descriptions = [it.get('name', '') for it in items if it.get('name')]
     pr_numurs    = invoice_data.get('doc_id', '')
-
-    # Nākamais kārtas numurs
     existing_nums = [int(str(e.get('kartas_nr', 0)).strip() or 0) for e in history]
     next_kartas   = max(existing_nums, default=0) + 1
-
     new_entry = {
         'kartas_nr':         next_kartas,
         'datums':            invoice_data.get('date', ''),
@@ -295,7 +265,6 @@ def save_to_history(invoice_data, local_path, github_path):
         'items_json':        json.dumps(items, ensure_ascii=False),
         'comments':          invoice_data.get('comments', ''),
         'created_at':        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        # Aliasi
         'items':             items,
         'doc_id':            pr_numurs,
         'client_name':       invoice_data.get('client_name', ''),
@@ -303,8 +272,6 @@ def save_to_history(invoice_data, local_path, github_path):
         'date':              invoice_data.get('date', ''),
         'total':             invoice_data.get('total', ''),
     }
-
-    # Atjaunina esošu vai pievieno jaunu
     updated = False
     for i, entry in enumerate(history):
         if entry.get('pr_numurs') == pr_numurs or entry.get('doc_id') == pr_numurs:
@@ -314,18 +281,12 @@ def save_to_history(invoice_data, local_path, github_path):
             break
     if not updated:
         history.append(new_entry)
-
-    # Saglabā lokāli
     df = _history_to_df(history)
     df.to_csv(local_path, index=False, encoding='utf-8')
-
-    # Saglabā GitHub
     if get_github_token():
         push_csv_to_github(df, github_path, f"Pievieno {pr_numurs}")
 
-
 def sync_history_from_github(local_path, github_path):
-    """Lejupielādē vēsturi no GitHub un saglabā lokāli."""
     content = fetch_csv_from_github(github_path)
     if content and ('doc_id' in content or 'kartas_nr' in content):
         with open(local_path, 'w', encoding='utf-8') as f:
@@ -333,13 +294,11 @@ def sync_history_from_github(local_path, github_path):
         return True
     return False
 
-
 def get_next_invoice_number(history):
     if not history:
         return 49
     max_num = 0
     for entry in history:
-        # Atbalsta gan jauno (pr_numurs), gan veco (doc_id) formātu
         doc = str(entry.get('pr_numurs', entry.get('doc_id', '')))
         parts = doc.split()
         if len(parts) > 1 and parts[-1].isdigit():
@@ -353,20 +312,16 @@ def get_next_invoice_number(history):
 # ---------------------------------------------------------------------------
 
 def load_invoice_into_form(entry):
-    """Ielādē vēstures ierakstu formas laukos."""
-    # Atbalsta gan jauno, gan veco formātu
     doc_id = str(entry.get('pr_numurs', entry.get('doc_id', '')))
     parts = doc_id.split()
     if len(parts) > 1 and parts[-1].isdigit():
         st.session_state.doc_number_input = int(parts[-1])
-
     st.session_state.client_data = {
         'name':    entry.get('pr_partneris', entry.get('client_name', '')),
         'address': entry.get('client_address', ''),
         'reg_no':  entry.get('client_reg_no', ''),
         'vat_no':  entry.get('pr_pvn_nr', entry.get('client_vat_no', ''))
     }
-
     items_raw = entry.get('items', [])
     items_list = []
     for item in items_raw:
@@ -383,7 +338,6 @@ def load_invoice_into_form(entry):
         })
     if items_list:
         st.session_state.items_df = pd.DataFrame(items_list)
-
     loaded_type = entry.get('doc_type', 'Pavadzīme')
     proforma_map = {
         "Proformas pavadzīme":     "Pavadzīme",
@@ -393,7 +347,6 @@ def load_invoice_into_form(entry):
     loaded_type = proforma_map.get(loaded_type, loaded_type)
     st.session_state.loaded_doc_type = loaded_type
     st.session_state.loaded_comments = entry.get('comments', '')
-
     try:
         date_str = entry.get('datums', entry.get('date', ''))
         if date_str:
@@ -441,6 +394,105 @@ def load_presets():
 
 def save_presets(df):
     df.to_csv(LOCAL_PRESETS_PATH, index=False)
+
+# ---------------------------------------------------------------------------
+# Excel ģenerators vēsturei
+# ---------------------------------------------------------------------------
+
+def generate_history_excel(history):
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Rēķinu vēsture"
+
+    header_fill  = PatternFill("solid", fgColor="D9E1F2")
+    subhead_fill = PatternFill("solid", fgColor="E9EEF8")
+    even_fill    = PatternFill("solid", fgColor="F2F5FC")
+    odd_fill     = PatternFill("solid", fgColor="FFFFFF")
+    header_font  = Font(name="Calibri", bold=True, size=9)
+    data_font    = Font(name="Calibri", size=9)
+    thin         = Side(style="thin", color="AAAAAA")
+    border       = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    headers_row1 = [
+        ("Kārtas\nNr.",                                                           1, "center"),
+        ("Datums",                                                                1, "center"),
+        ("PR norādītais\ndarījuma partneris",                                     1, "left"),
+        ("PR norādītā darījuma partnera\nreģistrācijas vai PVN maksātāja Nr.",    1, "center"),
+        ("PR datums un numurs",                                                   2, "center"),
+        ("Darījuma apraksts",                                                     1, "left"),
+        ("PR norādītā\ndarījuma vērtība\n(bez PVN)",                              1, "right"),
+        ("Dabas resursu\nun akcīzes\nnodokļi",                                    1, "right"),
+        ("Piešķirtās\natlaides",                                                  1, "right"),
+        ("PVN\nsumma",                                                            1, "right"),
+        ("Kopējā\nsumma",                                                         1, "right"),
+    ]
+
+    col = 1
+    for text, span, align in headers_row1:
+        cell = ws.cell(row=1, column=col, value=text)
+        cell.fill      = header_fill
+        cell.font      = header_font
+        cell.border    = border
+        cell.alignment = Alignment(horizontal=align, vertical="center", wrap_text=True)
+        if span == 2:
+            ws.merge_cells(start_row=1, start_column=col, end_row=1, end_column=col + 1)
+            ws.cell(row=1, column=col + 1).fill   = header_fill
+            ws.cell(row=1, column=col + 1).border = border
+        else:
+            ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
+        col += span
+
+    pr_col = 5
+    for sub_col, sub_text in [(pr_col, "Datums"), (pr_col + 1, "Numurs")]:
+        cell = ws.cell(row=2, column=sub_col, value=sub_text)
+        cell.fill      = subhead_fill
+        cell.font      = header_font
+        cell.border    = border
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws.row_dimensions[1].height = 40
+    ws.row_dimensions[2].height = 18
+
+    for r_idx, entry in enumerate(history, start=3):
+        row_fill = even_fill if r_idx % 2 == 0 else odd_fill
+        values = [
+            (entry.get('kartas_nr', ''),                                        "center"),
+            (entry.get('datums', entry.get('date', '')),                        "center"),
+            (entry.get('pr_partneris', entry.get('client_name', '')),           "left"),
+            (entry.get('pr_pvn_nr', entry.get('client_vat_no', '')),            "center"),
+            (entry.get('pr_datums', entry.get('date', '')),                     "center"),
+            (entry.get('pr_numurs', entry.get('doc_id', '')),                   "center"),
+            (entry.get('darijuma_apraksts', ''),                                "left"),
+            (entry.get('vertiba_bez_pvn', ''),                                  "right"),
+            (entry.get('dabas_resursi', '') or '—',                             "right"),
+            (entry.get('atlaides', '') or '—',                                  "right"),
+            (entry.get('pvn_summa', ''),                                        "right"),
+            (entry.get('kopeja_summa', entry.get('total', '')),                 "right"),
+        ]
+        for c_idx, (val, align) in enumerate(values, start=1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=str(val) if val else '')
+            cell.fill      = row_fill
+            cell.font      = data_font
+            cell.border    = border
+            cell.alignment = Alignment(
+                horizontal=align, vertical="center", wrap_text=(align == "left")
+            )
+        ws.row_dimensions[r_idx].height = 15
+
+    col_widths = [8, 11, 28, 22, 11, 11, 40, 14, 12, 12, 12, 13]
+    for i, w in enumerate(col_widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    ws.freeze_panes = "A3"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
 
 # ---------------------------------------------------------------------------
 # render_presets_app
@@ -497,139 +549,6 @@ def render_presets_app():
 # render_invoice_app
 # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Excel ģenerators vēsturei
-# ---------------------------------------------------------------------------
-
-def generate_history_excel(history):
-    import io
-    from openpyxl import Workbook
-    from openpyxl.styles import (
-        PatternFill, Font, Alignment, Border, Side
-    )
-    from openpyxl.utils import get_column_letter
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Rēķinu vēsture"
-
-    # --- Stili ---
-    header_fill   = PatternFill("solid", fgColor="D9E1F2")
-    subhead_fill  = PatternFill("solid", fgColor="E9EEF8")
-    even_fill     = PatternFill("solid", fgColor="F2F5FC")
-    odd_fill      = PatternFill("solid", fgColor="FFFFFF")
-
-    header_font   = Font(name="Calibri", bold=True, size=9)
-    data_font     = Font(name="Calibri", size=9)
-
-    center_align  = Alignment(horizontal="center", vertical="center",
-                               wrap_text=True)
-    left_align    = Alignment(horizontal="left",   vertical="center",
-                               wrap_text=True)
-    right_align   = Alignment(horizontal="right",  vertical="center",
-                               wrap_text=True)
-
-    thin = Side(style="thin", color="AAAAAA")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-    # --- 1. galvenes rinda (merged) ---
-    headers_row1 = [
-        ("Kārtas\nNr.",                                              1, "center"),
-        ("Datums",                                                   1, "center"),
-        ("PR norādītais\ndarījuma partneris",                        1, "left"),
-        ("PR norādītā darījuma partnera\nreģistrācijas vai PVN maksātāja Nr.", 1, "center"),
-        ("PR datums un numurs",                                      2, "center"),  # spans 2
-        ("Darījuma apraksts",                                        1, "left"),
-        ("PR norādītā\ndarījuma vērtība\n(bez PVN)",                 1, "right"),
-        ("Dabas resursu\nun akcīzes\nnodokļi",                       1, "right"),
-        ("Piešķirtās\natlaides",                                     1, "right"),
-        ("PVN\nsumma",                                               1, "right"),
-        ("Kopējā\nsumma",                                            1, "right"),
-    ]
-
-    col = 1
-    for text, span, align in headers_row1:
-        cell = ws.cell(row=1, column=col, value=text)
-        cell.fill      = header_fill
-        cell.font      = header_font
-        cell.border    = border
-        cell.alignment = Alignment(
-            horizontal=align, vertical="center", wrap_text=True
-        )
-        if span == 2:
-            ws.merge_cells(
-                start_row=1, start_column=col,
-                end_row=1,   end_column=col + 1
-            )
-            # Piešķir stilu arī otrai kolonnai
-            ws.cell(row=1, column=col+1).fill   = header_fill
-            ws.cell(row=1, column=col+1).border = border
-        else:
-            # Apvieno ar otro rindu (rowspan=2)
-            ws.merge_cells(
-                start_row=1, start_column=col,
-                end_row=2,   end_column=col
-            )
-        col += span
-
-    # --- 2. galvenes rinda — tikai PR datums/numurs apakškolonnas ---
-    # Kolonnas ar "PR datums un numurs" ir 5. un 6. (0-indexed: col 5,6)
-    pr_col = 5  # kur sākas "PR datums un numurs"
-    for sub_col, sub_text in [(pr_col, "Datums"), (pr_col + 1, "Numurs")]:
-        cell = ws.cell(row=2, column=sub_col, value=sub_text)
-        cell.fill      = subhead_fill
-        cell.font      = header_font
-        cell.border    = border
-        cell.alignment = center_align
-
-    ws.row_dimensions[1].height = 40
-    ws.row_dimensions[2].height = 18
-
-    # --- Datu rindas ---
-    for r_idx, entry in enumerate(history, start=3):
-        is_even = (r_idx % 2 == 0)
-        row_fill = even_fill if is_even else odd_fill
-
-        values = [
-            (entry.get('kartas_nr', ''),                                         "center"),
-            (entry.get('datums', entry.get('date', '')),                         "center"),
-            (entry.get('pr_partneris', entry.get('client_name', '')),            "left"),
-            (entry.get('pr_pvn_nr', entry.get('client_vat_no', '')),             "center"),
-            (entry.get('pr_datums', entry.get('date', '')),                      "center"),
-            (entry.get('pr_numurs', entry.get('doc_id', '')),                    "center"),
-            (entry.get('darijuma_apraksts', ''),                                 "left"),
-            (entry.get('vertiba_bez_pvn', ''),                                   "right"),
-            (entry.get('dabas_resursi', '') or '—',                              "right"),
-            (entry.get('atlaides', '') or '—',                                   "right"),
-            (entry.get('pvn_summa', ''),                                         "right"),
-            (entry.get('kopeja_summa', entry.get('total', '')),                  "right"),
-        ]
-
-        for c_idx, (val, align) in enumerate(values, start=1):
-            cell = ws.cell(row=r_idx, column=c_idx, value=str(val) if val else '')
-            cell.fill   = row_fill
-            cell.font   = data_font
-            cell.border = border
-            cell.alignment = Alignment(
-                horizontal=align, vertical="center", wrap_text=(align == "left")
-            )
-
-        ws.row_dimensions[r_idx].height = 15
-
-    # --- Kolonnu platumi ---
-    col_widths = [8, 11, 28, 22, 11, 11, 40, 14, 12, 12, 12, 13]
-    for i, w in enumerate(col_widths, start=1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-
-    # --- Iesaldē galveni ---
-    ws.freeze_panes = "A3"
-
-    # --- Saglabā ---
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf.getvalue()
-
 def render_invoice_app():
     history      = load_history(LOCAL_HISTORY_PATH)
     test_history = load_history(LOCAL_TEST_HIST_PATH)
@@ -637,7 +556,6 @@ def render_invoice_app():
 
     st.sidebar.header("Rēķina iestatījumi")
 
-    # --- Sinhronizācija no GitHub ---
     if st.sidebar.button("☁️ Ielādēt vēsturi no GitHub"):
         ok1 = sync_history_from_github(LOCAL_HISTORY_PATH, GITHUB_HISTORY_PATH)
         ok2 = sync_history_from_github(LOCAL_TEST_HIST_PATH, GITHUB_TEST_HIST_PATH)
@@ -647,7 +565,6 @@ def render_invoice_app():
         else:
             st.sidebar.warning("Neizdevās sinhronizēt (tukša vēsture vai nav Token)")
 
-    # --- Dokumenta numurs ---
     if 'doc_number_input' not in st.session_state:
         st.session_state.doc_number_input = next_number
 
@@ -657,19 +574,16 @@ def render_invoice_app():
     doc_id = f"BR {doc_number_input:04d}"
     st.sidebar.markdown(f"**Dokumenta ID:** {doc_id}")
 
-    # Pēdējās pavadzīmes numurs
     if history:
         last_num = get_next_invoice_number(history) - 1
         st.sidebar.info(f"📋 Pēdējā pavadzīme: **BR {last_num:04d}**")
 
-    # --- Datumi ---
     default_doc_date = st.session_state.get('loaded_doc_date', datetime.date.today())
     doc_date = st.sidebar.date_input("Datums", default_doc_date)
 
     default_due_date = st.session_state.get('loaded_due_date', doc_date + datetime.timedelta(days=14))
     due_date = st.sidebar.date_input("Apmaksāt līdz", default_due_date)
 
-    # --- Dokumenta tips ---
     doc_types = ["Pavadzīme", "Rēķins", "Avansa rēķins", "E-rēķins"]
     dt_index = 0
     if 'loaded_doc_type' in st.session_state and st.session_state.loaded_doc_type in doc_types:
@@ -678,7 +592,6 @@ def render_invoice_app():
 
     st.sidebar.markdown("---")
 
-    # --- Iepriekšējo pavadzīmju ielāde (īstās) ---
     st.sidebar.subheader("📂 Atvērt iepriekšējo pavadzīmi")
     if history:
         hist_options = {
@@ -696,7 +609,6 @@ def render_invoice_app():
 
     st.sidebar.markdown("---")
 
-    # --- Testa pavadzīmju ielāde ---
     st.sidebar.subheader("🔄 Testa pavadzīmju ielāde")
     if test_history:
         test_options = {
@@ -712,7 +624,6 @@ def render_invoice_app():
 
     st.sidebar.markdown("---")
 
-    # --- Google Drive ---
     st.sidebar.subheader("Google Drive")
     if GOOGLE_DRIVE_FOLDER_ID:
         drive_url = f"https://drive.google.com/drive/folders/{GOOGLE_DRIVE_FOLDER_ID}"
@@ -752,7 +663,6 @@ def render_invoice_app():
 
     st.sidebar.markdown("---")
 
-    # --- Datu pārvaldība ---
     st.sidebar.subheader("Datu pārvaldība")
     if 'confirm_delete_history' not in st.session_state:
         st.session_state.confirm_delete_history = False
@@ -844,8 +754,8 @@ def render_invoice_app():
     if not presets_df.empty:
         p_col1, p_col2, p_col3 = st.columns([3, 1, 1])
         with p_col1:
-            preset_options     = presets_df['NOSAUKUMS'].tolist()
-            selected_preset    = st.selectbox("Izvēlieties produktu", preset_options)
+            preset_options  = presets_df['NOSAUKUMS'].tolist()
+            selected_preset = st.selectbox("Izvēlieties produktu", preset_options)
         with p_col2:
             preset_qty = st.number_input("Daudzums", min_value=0.01, value=1.00, step=0.01)
         with p_col3:
@@ -867,9 +777,9 @@ def render_invoice_app():
         st.info("Sagatavju saraksts ir tukšs. Pievienojiet tos cilnē 'Produktu sagataves'.")
 
     display_df = st.session_state.items_df.copy()
-    display_df['DAUDZUMS']         = pd.to_numeric(display_df['DAUDZUMS'],         errors='coerce').fillna(0)
-    display_df['CENA (EUR)']       = pd.to_numeric(display_df['CENA (EUR)'],       errors='coerce').fillna(0)
-    display_df['Cena kopā (EUR)']  = display_df['DAUDZUMS'] * display_df['CENA (EUR)']
+    display_df['DAUDZUMS']        = pd.to_numeric(display_df['DAUDZUMS'],        errors='coerce').fillna(0)
+    display_df['CENA (EUR)']      = pd.to_numeric(display_df['CENA (EUR)'],      errors='coerce').fillna(0)
+    display_df['Cena kopā (EUR)'] = display_df['DAUDZUMS'] * display_df['CENA (EUR)']
 
     edited_df = st.data_editor(
         display_df, num_rows="dynamic", width="stretch", hide_index=False,
@@ -888,12 +798,12 @@ def render_invoice_app():
     # Aprēķini
     # -----------------------------------------------------------------------
 
-    subtotal, vat, total                 = 0.0, 0.0, 0.0
-    advance_payment, advance_percent     = 0.0, 0.0
-    discount_eur, discount_percent       = 0.0, 0.0
-    subtotal_after_discount              = 0.0
-    amount_words                         = ""
-    calc_df                              = edited_df.copy()
+    subtotal, vat, total             = 0.0, 0.0, 0.0
+    advance_payment, advance_percent = 0.0, 0.0
+    discount_eur, discount_percent   = 0.0, 0.0
+    subtotal_after_discount          = 0.0
+    amount_words                     = ""
+    calc_df                          = edited_df.copy()
 
     def fmt_curr(val):
         return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
@@ -927,7 +837,6 @@ def render_invoice_app():
                 else:
                     advance_percent = st.number_input("Procenti (%)", 0.0, 100.0, 50.0, 5.0)
                     advance_payment = total * (advance_percent / 100)
-
                 _, t_col2 = st.columns([3, 1])
                 with t_col2:
                     st.markdown(f"Kopējā pasūtījuma summa: € {fmt_curr(total)}")
@@ -975,34 +884,34 @@ def render_invoice_app():
     # -----------------------------------------------------------------------
 
     invoice_data = {
-        'doc_type':               doc_type,
-        'doc_id':                 doc_id,
-        'date':                   doc_date.strftime("%d.%m.%Y"),
-        'due_date':               due_date.strftime("%d.%m.%Y"),
-        'client_name':            st.session_state.client_data['name'],
-        'client_address':         st.session_state.client_data['address'],
-        'client_reg_no':          st.session_state.client_data['reg_no'],
-        'client_vat_no':          st.session_state.client_data['vat_no'],
-        'items':                  [],
-        'subtotal':               fmt_curr(subtotal),
-        'vat':                    fmt_curr(vat),
-        'total':                  fmt_curr(total),
-        'raw_total':              total,
-        'raw_advance':            advance_payment,
-        'advance_percent':        advance_percent,
-        'discount_eur':           fmt_curr(discount_eur),
-        'raw_discount_eur':       discount_eur,
-        'discount_percent':       discount_percent,
+        'doc_type':                doc_type,
+        'doc_id':                  doc_id,
+        'date':                    doc_date.strftime("%d.%m.%Y"),
+        'due_date':                due_date.strftime("%d.%m.%Y"),
+        'client_name':             st.session_state.client_data['name'],
+        'client_address':          st.session_state.client_data['address'],
+        'client_reg_no':           st.session_state.client_data['reg_no'],
+        'client_vat_no':           st.session_state.client_data['vat_no'],
+        'items':                   [],
+        'subtotal':                fmt_curr(subtotal),
+        'vat':                     fmt_curr(vat),
+        'total':                   fmt_curr(total),
+        'raw_total':               total,
+        'raw_advance':             advance_payment,
+        'advance_percent':         advance_percent,
+        'discount_eur':            fmt_curr(discount_eur),
+        'raw_discount_eur':        discount_eur,
+        'discount_percent':        discount_percent,
         'subtotal_after_discount': fmt_curr(subtotal_after_discount),
-        'amount_words':           amount_words,
-        'signatory':              full_signatory,
-        'comments':               comments,
-        'receiver_name':          st.session_state.get('e_invoice_data', {}).get('receiver_name', ''),
-        'receiver_reg_no':        st.session_state.get('e_invoice_data', {}).get('receiver_reg_no', ''),
-        'receiver_address':       st.session_state.get('e_invoice_data', {}).get('receiver_address', ''),
-        'customer_name':          st.session_state.get('e_invoice_data', {}).get('customer_name', ''),
-        'customer_reg_no':        st.session_state.get('e_invoice_data', {}).get('customer_reg_no', ''),
-        'customer_address':       st.session_state.get('e_invoice_data', {}).get('customer_address', ''),
+        'amount_words':            amount_words,
+        'signatory':               full_signatory,
+        'comments':                comments,
+        'receiver_name':           st.session_state.get('e_invoice_data', {}).get('receiver_name', ''),
+        'receiver_reg_no':         st.session_state.get('e_invoice_data', {}).get('receiver_reg_no', ''),
+        'receiver_address':        st.session_state.get('e_invoice_data', {}).get('receiver_address', ''),
+        'customer_name':           st.session_state.get('e_invoice_data', {}).get('customer_name', ''),
+        'customer_reg_no':         st.session_state.get('e_invoice_data', {}).get('customer_reg_no', ''),
+        'customer_address':        st.session_state.get('e_invoice_data', {}).get('customer_address', ''),
     }
 
     if not edited_df.empty:
@@ -1032,9 +941,9 @@ def render_invoice_app():
 
     if is_proforma:
         type_map = {
-            "Pavadzīme":    "Proformas pavadzīme",
-            "Rēķins":       "Proformas rēķins",
-            "Avansa rēķins":"Proformas avansa rēķins"
+            "Pavadzīme":     "Proformas pavadzīme",
+            "Rēķins":        "Proformas rēķins",
+            "Avansa rēķins": "Proformas avansa rēķins"
         }
         invoice_data['doc_type'] = type_map.get(doc_type, doc_type)
 
@@ -1078,9 +987,6 @@ def render_invoice_app():
     st.markdown("---")
     with st.expander("🗄️ Rēķinu vēsture (Izrakstītie)", expanded=False):
         if history:
-            with st.expander("🗄️ Rēķinu vēsture (Izrakstītie)", expanded=False):
-        if history:
-            # ← PIEVIENO ŠO BLOKU:
             excel_bytes = generate_history_excel(history)
             st.download_button(
                 label="📥 Lejupielādēt kā Excel",
@@ -1089,7 +995,7 @@ def render_invoice_app():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
             st.markdown("---")
-            # ← TĀLĀK PALIEK VISS KĀ BIJA (rows_html = "" utt.)
+
             rows_html = ""
             for entry in history:
                 rows_html += f"""
