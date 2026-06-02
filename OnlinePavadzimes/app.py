@@ -282,9 +282,13 @@ def save_to_history(invoice_data, local_path, github_path):
     if not updated:
         history.append(new_entry)
     df = _history_to_df(history)
+    # Šīs ir save_to_history beigas
     df.to_csv(local_path, index=False, encoding='utf-8')
     if get_github_token():
-        push_csv_to_github(df, github_path, f"Pievieno {pr_numurs}")
+        success, msg = push_csv_to_github(df, github_path, f"Pievieno {pr_numurs}")
+        return success, msg
+    else:
+        return False, "Sistēmā nav ievadīts GITHUB_TOKEN"
 
 def sync_history_from_github(local_path, github_path):
     content = fetch_csv_from_github(github_path)
@@ -363,13 +367,21 @@ def load_invoice_into_form(entry):
 
 def handle_download(invoice_data, file_buffer, filename, mime_type, is_proforma):
     if is_proforma:
-        save_to_history(invoice_data, LOCAL_TEST_HIST_PATH, GITHUB_TEST_HIST_PATH)
-        st.toast("✅ Proformas dokuments saglabāts vēsturē (GitHub)", icon="💾")
+        success, msg = save_to_history(invoice_data, LOCAL_TEST_HIST_PATH, GITHUB_TEST_HIST_PATH)
+        if success:
+            st.toast("✅ Proformas dokuments saglabāts vēsturē (GitHub)", icon="💾")
+        else:
+            st.error(f"⚠️ Kļūda saglabājot GitHub: {msg}")
     else:
-        save_to_history(invoice_data, LOCAL_HISTORY_PATH, GITHUB_HISTORY_PATH)
+        success, msg = save_to_history(invoice_data, LOCAL_HISTORY_PATH, GITHUB_HISTORY_PATH)
+        if success:
+            st.toast("✅ Dokuments saglabāts vēsturē (GitHub)", icon="💾")
+        else:
+            st.error(f"⚠️ Kļūda saglabājot vēsturi GitHub: {msg}")
+            
         if get_drive_service():
-            success = upload_to_drive(file_buffer, filename, mime_type)
-            if success:
+            success_drive = upload_to_drive(file_buffer, filename, mime_type)
+            if success_drive:
                 st.toast(f"✅ Saglabāts Drive: {filename}", icon="☁️")
             else:
                 st.toast("⚠️ Kļūda saglabājot Drive", icon="❌")
