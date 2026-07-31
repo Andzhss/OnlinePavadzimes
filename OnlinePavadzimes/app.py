@@ -1030,7 +1030,36 @@ def render_invoice_app():
                     "Kopējā summa": entry.get('kopeja_summa', entry.get('total', '')),
                 })
             hist_df = pd.DataFrame(hist_data)
-            st.dataframe(hist_df, use_container_width=True, hide_index=True)
+
+            edited_hist_df = st.data_editor(
+                hist_df,
+                num_rows="fixed",
+                use_container_width=True,
+                hide_index=True,
+                key="history_editor",
+                disabled=hist_df.columns.tolist()
+            )
+
+            # Ja rindas tika dzēstas, parādām pogu saglabāšanai
+            if len(edited_hist_df) < len(hist_df):
+                deleted_count = len(hist_df) - len(edited_hist_df)
+                st.warning(f"⚠️ {deleted_count} rinda(s) atzīmēta(s) dzēšanai.")
+                if st.button("💾 Apstiprināt dzēšanu", type="primary"):
+                    kept_nums = set(edited_hist_df["PR numurs"].tolist())
+                    new_history = [e for e in history
+                                   if e.get('pr_numurs', e.get('doc_id', '')) in kept_nums]
+                    df = _history_to_df(new_history)
+                    df.to_csv(LOCAL_HISTORY_PATH, index=False, encoding='utf-8')
+                    if get_github_token():
+                        success, msg = push_csv_to_github(df, GITHUB_HISTORY_PATH,
+                                                          f"Dzēsti {deleted_count} ieraksti no vēstures")
+                        if success:
+                            st.success("✅ Vēsture atjaunināta un saglabāta GitHub!")
+                        else:
+                            st.warning(f"Lokāli saglabāts, bet GitHub kļūda: {msg}")
+                    else:
+                        st.success("✅ Vēsture atjaunināta lokāli!")
+                    st.rerun()
         else:
             st.info("Vēsture ir tukša.")
 
