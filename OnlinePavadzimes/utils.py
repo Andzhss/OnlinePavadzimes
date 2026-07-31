@@ -23,7 +23,8 @@ def money_to_words_lv(amount):
 
 def scrape_lursoft(url):
     """
-    Mēģina nolasīt Uzņēmuma nosaukumu, Reģ. Nr. un Adresi no Lursoft URL.
+    Nolasa uzņēmuma nosaukumu, Reģ. Nr. un Adresi no Lursoft lapas.
+    Atbalsta lv, ru, en valodu versijas.
     Atgriež vārdnīcu (dict) vai None.
     """
     try:
@@ -36,88 +37,64 @@ def scrape_lursoft(url):
         soup = BeautifulSoup(response.text, 'html.parser')
         data = {}
         
-        # 1. Nosaukums (Company Name)
+        # 1. Nosaukums — vienmēr <h1>
         h1 = soup.find('h1')
         if h1:
             data['name'] = h1.get_text(strip=True)
-        else:
-             # Fallback: Check title
-            if soup.title:
-                data['name'] = soup.title.get_text(strip=True).split('-')[0].strip()
+        elif soup.title:
+            data['name'] = soup.title.get_text(strip=True).split('-')[0].strip()
 
-        # 2. Reģistrācijas numurs (Reg No)
-        # Meklējam tekstu "Reģistrācijas numurs"
-        # Izmantojam regex, lai atrastu tieši 11 ciparus un ignorētu datumus iekavās
-        reg_label = soup.find(string=re.compile(r"Reģistrācijas numurs", re.I))
-        
-        if reg_label:
-            parent = reg_label.parent
-            reg_text_candidates = []
-            
-            # Pārbaudām nākamo elementu (ja tā ir tabulas šūna)
-            next_td = parent.find_next_sibling('td')
-            if next_td:
-                reg_text_candidates.append(next_td.get_text(strip=True))
-            
-            # Pārbaudām nākamo elementu (ja tas ir vienkārši nākamais tags, piemēram, <p>)
-            next_el = parent.find_next_sibling()
-            if next_el:
-                reg_text_candidates.append(next_el.get_text(strip=True))
-                
-            # Pārbaudām arī pašu elementu (ja numurs ir vienā virknē ar nosaukumu)
-            reg_text_candidates.append(parent.get_text(strip=True))
-            
-            # Meklējam precīzi 11 ciparus (LV reģ. nr. standarts) jebkurā no atrastajiem tekstiem
-            for text in reg_text_candidates:
-                match = re.search(r"(\d{11})", text)
-                if match:
-                    data['reg_no'] = match.group(1)
-                    break
+        # 2. Reģ. Nr. un Adrese — meklējam tabulas rindās (<tr>)
+        #    Atbalstām visu trīs valodu apzīmējumus
+        reg_label_patterns = [
+            r'Reģistrācijas\s*numurs',   # LV
+            r'Регистрационный\s*номер',   # RU
+            r'Registration\s*number',     # EN
+        ]
+        addr_label_patterns = [
+            r'Juridiskā\s*adrese',        # LV
+            r'Юридический\s*адрес',        # RU
+            r'Legal\s*address',           # EN
+        ]
 
-        # 3. Adrese (Address)
-        # Meklējam "Juridiskā adrese" (lai izvairītos no navigācijas joslas "Adreses")
-        addr_label = soup.find(string=re.compile(r"Juridiskā adrese", re.I))
-        
-        if addr_label:
-            parent = addr_label.parent
-            raw_address = ""
-            
-            # 1. variants: Adrese ir blakus esošajā tabulas šūnā (TD)
-            next_td = parent.find_next_sibling('td')
-            
-            # 2. variants: Adrese ir nākamajā elementā
-            next_el = parent.find_next_sibling()
-            
-            if next_td:
-                raw_address = next_td.get_text(strip=True)
-            elif next_el:
-                 raw_address = next_el.get_text(strip=True)
-            else:
-                 # 3. variants: Adrese ir tajā pašā tagā aiz kola
-                 full_text = parent.get_text(strip=True)
-                 parts = full_text.split(':', 1)
-                 if len(parts) > 1:
-                     raw_address = parts[1].strip()
+        all_rows = soup.find_all('tr')
+        for row in all_rows:
+            cells = row.find_all('td')
+            if len(cells) < 2:
+                continue
+            label = cells[0].get_text(strip=True)
+            value = cells[1].get_text(' ', strip=True)  # atdalām inline elementus ar atstarpi
 
-            # --- TĪRĪŠANA ---
-            
-            # 1. Noņemam "Juridiskā adrese:" sākumā
-            clean_address = re.sub(r"^(Juridiskā adrese|Adrese)\s*:?\s*", "", raw_address, flags=re.I)
-            
-            # 2. JAUNS: Noņemam visu tekstu, sākot ar "Adresē reģistrēti" (ignorējam reģistrēto uzņēmumu skaitu)
-            # split atgriež sarakstu, paņemam pirmo daļu [0]
-            clean_address = re.split(r"Adresē reģistrēti", clean_address, flags=re.I)[0]
-            
-            # 3. Papildus tīrīšana: noņemam "Skatīt kartē" vai tamlīdzīgus atlikumus, ja tādi parādās beigās
-            # (Tas nav obligāti, bet var noderēt)
-            
-            clean_address = clean_address.strip()
-            
-            # Pēdējā pārbaude - ja rezultāts satur "Uzņēmumi /", tad tas tomēr ir navigācijas elements (fail safe)
-            if clean_address and "Uzņēmumi" not in clean_address:
-                data['address'] = clean_address
+            # --- Reģistrācijas numurs ---
+            if 'reg_no' not in data:
+                for pat in reg_label_patterns:
+                    if re.search(pat, label, re.I):
+                        match = re.search(r'(\d{11})', value)
+                        if match:
+                            data['reg_no'] = match.group(1)
+                        break
 
-        return data
+            # --- Juridiskā adrese ---
+            if 'address' not in data:
+                for pat in addr_label_patterns:
+                    if re.search(pat, label, re.I):
+                        # Noņemam "Juridiskā adrese:" / "Юридический адрес:" sākumu, ja tas tur ir
+                        addr = re.sub(
+                            r'^(Juridiskā\s*adrese|Юридический\s*адрес|Legal\s*address)\s*:\s*',
+                            '', value, flags=re.I
+                        )
+                        # Nogriežam visu, kas sākas ar "Iepriekšējās" / "Предыдущие" / "Previous" / "Adresē reģistrēti" utt.
+                        addr = re.split(
+                            r'(Iepriekšējās|Предыдущие|Previous|Adresē\s*reģistrēti|Зарегистрированы|Pasta\s*adrese|Почтовый\s*адрес|Postal\s*address)',
+                            addr, flags=re.I
+                        )[0]
+                        addr = addr.strip().strip(',').strip()
+                        if addr and len(addr) > 3:
+                            data['address'] = addr
+                        break
+
+        return data if data.get('name') else None
+
     except Exception as e:
         print(f"Scraping error: {e}")
         return None
