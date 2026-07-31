@@ -596,12 +596,6 @@ def render_invoice_app():
     default_due_date = st.session_state.get('loaded_due_date', doc_date + datetime.timedelta(days=14))
     due_date = st.sidebar.date_input("Apmaksāt līdz", default_due_date)
 
-    doc_types = ["Pavadzīme", "Rēķins", "Avansa rēķins", "E-rēķins"]
-    dt_index = 0
-    if 'loaded_doc_type' in st.session_state and st.session_state.loaded_doc_type in doc_types:
-        dt_index = doc_types.index(st.session_state.loaded_doc_type)
-    doc_type = st.sidebar.selectbox("Dokumenta tips", doc_types, index=dt_index)
-
     st.sidebar.markdown("---")
 
     st.sidebar.subheader("📂 Atvērt iepriekšējo pavadzīmi")
@@ -698,6 +692,12 @@ def render_invoice_app():
     # -----------------------------------------------------------------------
     # Klienta dati
     # -----------------------------------------------------------------------
+
+    doc_types = ["Pavadzīme", "Rēķins", "Avansa rēķins", "E-rēķins"]
+    dt_index = 0
+    if 'loaded_doc_type' in st.session_state and st.session_state.loaded_doc_type in doc_types:
+        dt_index = doc_types.index(st.session_state.loaded_doc_type)
+    doc_type = st.selectbox("Dokumenta tips", doc_types, index=dt_index)
 
     if 'client_data' not in st.session_state:
         st.session_state.client_data = {'name': '', 'address': '', 'reg_no': '', 'vat_no': ''}
@@ -802,6 +802,10 @@ def render_invoice_app():
         }
     )
 
+    # Aizpildām noklusējuma vērtības jaunām rindām
+    edited_df['Mērvienība'] = edited_df['Mērvienība'].fillna('Gab.').replace('', 'Gab.')
+    edited_df['DAUDZUMS']   = edited_df['DAUDZUMS'].fillna(1.0).replace(0, 1.0)
+
     if st.button("🔄 Pārrēķināt summas"):
         st.session_state.items_df = edited_df.drop(columns=['Cena kopā (EUR)'], errors='ignore')
         st.rerun()
@@ -885,7 +889,7 @@ def render_invoice_app():
     signatory_options = ["Adrians Stankevičs", "Rihards Ozoliņš", "Ēriks Ušackis", "Aleks Kristiāns Grīnbergs"]
     col_sig1, col_sig2 = st.columns(2)
     with col_sig1:
-        selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options, key="sig_select")
+        selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options, index=1, key="sig_select")
     with col_sig2:
         signatory_title = st.text_input("Amats", "valdes loceklis", key="sig_title")
     full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
