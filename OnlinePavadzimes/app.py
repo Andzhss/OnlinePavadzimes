@@ -720,7 +720,13 @@ def render_invoice_app():
                         if scraped.get('name'):    st.session_state.client_data['name']    = scraped['name']
                         if scraped.get('address'): st.session_state.client_data['address'] = scraped['address']
                         if scraped.get('reg_no'):  st.session_state.client_data['reg_no']  = scraped['reg_no']
-                        st.session_state.client_data['vat_no'] = "LV" + scraped.get('reg_no', '')
+                        # PVN: izmantojam scraped vērtību ja ir, citādi "LV"+reģ.nr., citādi "-"
+                        if scraped.get('vat_no'):
+                            st.session_state.client_data['vat_no'] = scraped['vat_no']
+                        elif scraped.get('reg_no'):
+                            st.session_state.client_data['vat_no'] = "LV" + scraped['reg_no']
+                        else:
+                            st.session_state.client_data['vat_no'] = "-"
                         st.success("Dati veiksmīgi ielasīti!")
                         st.rerun()
                     else:
