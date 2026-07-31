@@ -1012,74 +1012,25 @@ def render_invoice_app():
             )
             st.markdown("---")
 
-            rows_html = ""
+            # Veidojam DataFrame no vēstures datiem
+            hist_data = []
             for entry in history:
-                rows_html += f"""
-                <tr>
-                    <td style="text-align:center">{entry.get('kartas_nr', '')}</td>
-                    <td style="text-align:center">{entry.get('datums', entry.get('date', ''))}</td>
-                    <td>{entry.get('pr_partneris', entry.get('client_name', ''))}</td>
-                    <td style="text-align:center">{entry.get('pr_pvn_nr', entry.get('client_vat_no', ''))}</td>
-                    <td style="text-align:center">{entry.get('pr_datums', entry.get('date', ''))}</td>
-                    <td style="text-align:center">{entry.get('pr_numurs', entry.get('doc_id', ''))}</td>
-                    <td style="max-width:220px; white-space:normal; word-break:break-word">{entry.get('darijuma_apraksts', '')}</td>
-                    <td style="text-align:right">{entry.get('vertiba_bez_pvn', '')}</td>
-                    <td style="text-align:center">{entry.get('dabas_resursi', '') or '—'}</td>
-                    <td style="text-align:right">{entry.get('atlaides', '') or '—'}</td>
-                    <td style="text-align:right">{entry.get('pvn_summa', '')}</td>
-                    <td style="text-align:right; font-weight:bold">{entry.get('kopeja_summa', entry.get('total', ''))}</td>
-                </tr>"""
-
-            st.markdown(f"""
-            <style>
-            .inv-hist {{
-                border-collapse: collapse;
-                font-size: 11px;
-                width: 100%;
-            }}
-            .inv-hist th, .inv-hist td {{
-                border: 1px solid #bbb;
-                padding: 4px 7px;
-                vertical-align: middle;
-            }}
-            .inv-hist thead th {{
-                background-color: #e8ecf0;
-                text-align: center;
-                font-weight: bold;
-                line-height: 1.3;
-            }}
-            .inv-hist tbody tr:nth-child(even) {{
-                background-color: #f5f8fb;
-            }}
-            .inv-hist tbody tr:hover {{
-                background-color: #dceeff;
-            }}
-            </style>
-            <div style="overflow-x:auto; margin-top:10px">
-            <table class="inv-hist">
-                <thead>
-                    <tr>
-                        <th rowspan="2" style="min-width:50px">Kārtas<br>Nr.</th>
-                        <th rowspan="2" style="min-width:80px">Datums</th>
-                        <th rowspan="2" style="min-width:150px">PR norādītais<br>darījuma partneris</th>
-                        <th rowspan="2" style="min-width:140px">PR norādītā darījuma<br>partnera reģistrācijas<br>vai PVN maksātāja Nr.</th>
-                        <th colspan="2">PR datums un numurs</th>
-                        <th rowspan="2" style="min-width:180px">Darījuma apraksts</th>
-                        <th rowspan="2" style="min-width:100px">PR norādītā<br>darījuma vērtība<br>(bez PVN)</th>
-                        <th rowspan="2" style="min-width:100px">Dabas resursu<br>un akcīzes<br>nodokļi</th>
-                        <th rowspan="2" style="min-width:90px">Piešķirtās<br>atlaides</th>
-                        <th rowspan="2" style="min-width:90px">PVN summa</th>
-                        <th rowspan="2" style="min-width:100px">Kopējā<br>summa</th>
-                    </tr>
-                    <tr>
-                        <th style="min-width:80px">Datums</th>
-                        <th style="min-width:90px">Numurs</th>
-                    </tr>
-                </thead>
-                <tbody>{rows_html}</tbody>
-            </table>
-            </div>
-            """, unsafe_allow_html=True)
+                hist_data.append({
+                    "Kārtas Nr.": entry.get('kartas_nr', ''),
+                    "Datums": entry.get('datums', entry.get('date', '')),
+                    "Darījuma partneris": entry.get('pr_partneris', entry.get('client_name', '')),
+                    "Reģ./PVN Nr.": entry.get('pr_pvn_nr', entry.get('client_vat_no', '')),
+                    "PR datums": entry.get('pr_datums', entry.get('date', '')),
+                    "PR numurs": entry.get('pr_numurs', entry.get('doc_id', '')),
+                    "Darījuma apraksts": entry.get('darijuma_apraksts', ''),
+                    "Vērtība (bez PVN)": entry.get('vertiba_bez_pvn', ''),
+                    "Dabas resursi": entry.get('dabas_resursi', '') or '—',
+                    "Atlaides": entry.get('atlaides', '') or '—',
+                    "PVN summa": entry.get('pvn_summa', ''),
+                    "Kopējā summa": entry.get('kopeja_summa', entry.get('total', '')),
+                })
+            hist_df = pd.DataFrame(hist_data)
+            st.dataframe(hist_df, use_container_width=True, hide_index=True)
         else:
             st.info("Vēsture ir tukša.")
 
