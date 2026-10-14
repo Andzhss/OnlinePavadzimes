@@ -29,12 +29,14 @@ TOKEN_FILE = os.path.join(BASE_DIR, "token.json")
 LOCAL_PRESETS_PATH    = os.path.join(BASE_DIR, "presets.csv")
 LOCAL_HISTORY_PATH    = os.path.join(BASE_DIR, "invoice_history.csv")
 LOCAL_TEST_HIST_PATH  = os.path.join(BASE_DIR, "test_invoice_history.csv")
+LOCAL_CLIENTS_PATH    = os.path.join(BASE_DIR, "clients.csv")
 
 # GitHub ceļi (repozitorijā)
 GITHUB_REPO            = "Andzhss/OnlinePavadzimes"
 GITHUB_PRESETS_PATH    = "OnlinePavadzimes/presets.csv"
 GITHUB_HISTORY_PATH    = "OnlinePavadzimes/invoice_history.csv"
 GITHUB_TEST_HIST_PATH  = "OnlinePavadzimes/test_invoice_history.csv"
+GITHUB_CLIENTS_PATH    = "OnlinePavadzimes/clients.csv"
 
 # Google Drive
 GOOGLE_DRIVE_FOLDER_ID = "1vqhkHGH9WAMaFnXtduyyjYdEzHMx0iX9"
@@ -47,6 +49,9 @@ HISTORY_COLS = [
     'vertiba_bez_pvn', 'dabas_resursi', 'atlaides', 'pvn_summa', 'kopeja_summa',
     'due_date', 'client_reg_no', 'client_address', 'doc_type', 'items_json', 'comments', 'created_at'
 ]
+
+# CSV kolonnas klientu sarakstam
+CLIENTS_COLS = ['name', 'address', 'reg_no', 'vat_no', 'created_at']
 
 # ---------------------------------------------------------------------------
 # GitHub palīgfunkcijas
@@ -312,6 +317,122 @@ def get_next_invoice_number(history):
     return max_num + 1
 
 # ---------------------------------------------------------------------------
+# Klientu saraksta funkcijas (CSV bāzētas)
+# ---------------------------------------------------------------------------
+
+def _norm_client_name(name):
+    """Normalizē klienta nosaukumu dedublikācijai."""
+    return " ".join(str(name).strip().split()).lower()
+
+def load_clients():
+    if not os.path.exists(LOCAL_CLIENTS_PATH):
+        content = fetch_csv_from_github(GITHUB_CLIENTS_PATH)
+        if content and 'name' in content:
+            try:
+                with open(LOCAL_CLIENTS_PATH, 'w', encoding='utf-8') as f:
+                    f.write(content)
+            except Exception:
+                pass
+    if not os.path.exists(LOCAL_CLIENTS_PATH):
+        return []
+    try:
+        df = pd.read_csv(LOCAL_CLIENTS_PATH, dtype=str)
+        if df.empty:
+            return []
+        return df.to_dict('records')
+    except Exception:
+        return []
+
+def _clients_to_df(clients):
+    rows = []
+    for c in clients:
+        row = {col: c.get(col, '') for col in CLIENTS_COLS}
+        rows.append(row)
+    return pd.DataFrame(rows, columns=CLIENTS_COLS) if rows else pd.DataFrame(columns=CLIENTS_COLS)
+
+def save_clients(clients):
+    df = _clients_to_df(clients)
+    df.to_csv(LOCAL_CLIENTS_PATH, index=False, encoding='utf-8')
+
+def push_clients_to_github(clients):
+    df = _clients_to_df(clients)
+    return push_csv_to_github(df, GITHUB_CLIENTS_PATH, "Update clients.csv via App")
+
+def upsert_client(clients, name, address='', reg_no='', vat_no=''):
+    """Pievieno vai atjauno klientu. Atgriež (clients, added). Bez duplikātiem.
+
+    Duplikātu nosaka pēc normalizēta nosaukuma VAI pēc sakrītoša reģ. nr. /
+    PVN nr. (lai viena firma ar atšķirīgu nosaukuma pierakstu neparādītos 2x).
+    """
+    name = str(name or '').strip()
+    if not name:
+        return clients, False
+    key = _norm_client_name(name)
+    reg = str(reg_no or '').strip()
+    vat = str(vat_no or '').strip()
+    for c in clients:
+        c_name = _norm_client_name(c.get('name', ''))
+        c_reg  = str(c.get('reg_no', '') or '').strip()
+        c_vat  = str(c.get('vat_no', '') or '').strip()
+        same_reg = bool(reg and c_reg and reg == c_reg)
+        same_vat = bool(vat and c_vat and vat == c_vat)
+        if c_name == key or same_reg or same_vat:
+            if address: c['address'] = address
+            if reg_no:  c['reg_no']  = reg_no
+            if vat_no:  c['vat_no']  = vat_no
+            return clients, False
+    clients.append({
+        'name':       name,
+        'address':    str(address or ''),
+        'reg_no':     str(reg_no or ''),
+        'vat_no':     str(vat_no or ''),
+        'created_at': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    return clients, True
+
+def clients_from_history(history):
+    """Apvieno klientu CSV ar vēsturi, deduplicē un saglabā atpakaļ."""
+    clients = load_clients()
+    changed = False
+    for e in history:
+        name = e.get('pr_partneris', e.get('client_name', ''))
+        if not name:
+            continue
+        clients, added = upsert_client(
+            clients,
+            name,
+            e.get('client_address', ''),
+            e.get('client_reg_no', ''),
+            e.get('pr_pvn_nr', e.get('client_vat_no', '')),
+        )
+        if added:
+            changed = True
+    if changed:
+        save_clients(clients)
+        if get_github_token():
+            push_clients_to_github(clients)
+    return clients
+
+def record_client(invoice_data):
+    """Pēc dokumenta izveides ieraksta klientu sarakstā (bez duplikātiem)."""
+    name = str(invoice_data.get('client_name') or '').strip()
+    if not name:
+        return False, ""
+    clients = load_clients()
+    clients, added = upsert_client(
+        clients,
+        name,
+        invoice_data.get('client_address', ''),
+        invoice_data.get('client_reg_no', ''),
+        invoice_data.get('client_vat_no', ''),
+    )
+    save_clients(clients)
+    if added and get_github_token():
+        success, msg = push_clients_to_github(clients)
+        return added, (msg if success else "")
+    return added, ""
+
+# ---------------------------------------------------------------------------
 # Pavadzīmes ielāde formā
 # ---------------------------------------------------------------------------
 
@@ -326,6 +447,8 @@ def load_invoice_into_form(entry):
         'reg_no':  entry.get('client_reg_no', ''),
         'vat_no':  entry.get('pr_pvn_nr', entry.get('client_vat_no', ''))
     }
+    st.session_state.client_select = entry.get('pr_partneris', entry.get('client_name', ''))
+    st.session_state.last_client_select = st.session_state.client_select
     items_raw = entry.get('items', [])
     items_list = []
     for item in items_raw:
@@ -378,6 +501,10 @@ def handle_download(invoice_data, file_buffer, filename, mime_type, is_proforma)
             st.toast("✅ Dokuments saglabāts vēsturē (GitHub)", icon="💾")
         else:
             st.error(f"⚠️ Kļūda saglabājot vēsturi GitHub: {msg}")
+
+        added, cmsg = record_client(invoice_data)
+        if added:
+            st.toast("👤 Klients pievienots klientu sarakstam", icon="➕")
             
         if get_drive_service():
             success_drive = upload_to_drive(file_buffer, filename, mime_type)
@@ -571,6 +698,9 @@ def render_invoice_app():
     if st.sidebar.button("☁️ Ielādēt vēsturi no GitHub"):
         ok1 = sync_history_from_github(LOCAL_HISTORY_PATH, GITHUB_HISTORY_PATH)
         ok2 = sync_history_from_github(LOCAL_TEST_HIST_PATH, GITHUB_TEST_HIST_PATH)
+        # Atjaunojam arī klientu sarakstu no GitHub
+        if os.path.exists(LOCAL_CLIENTS_PATH):
+            os.remove(LOCAL_CLIENTS_PATH)
         if ok1 or ok2:
             st.sidebar.success("Vēsture atjaunota!")
             st.rerun()
@@ -688,6 +818,67 @@ def render_invoice_app():
         if col_del_2.button("Atcelt"):
             st.session_state.confirm_delete_history = False
             st.rerun()
+
+    # -----------------------------------------------------------------------
+    # Klienta izvēle (dropdown) — augšā
+    # -----------------------------------------------------------------------
+
+    clients = clients_from_history(history)
+
+    if 'client_data' not in st.session_state:
+        st.session_state.client_data = {'name': '', 'address': '', 'reg_no': '', 'vat_no': ''}
+    if 'client_select' not in st.session_state:
+        st.session_state.client_select = "— Jauns klients —"
+    if 'last_client_select' not in st.session_state:
+        st.session_state.last_client_select = st.session_state.client_select
+
+    client_names = ["— Jauns klients —"] + sorted(
+        [str(c.get('name', '')).strip() for c in clients if str(c.get('name', '')).strip()],
+        key=lambda x: x.lower()
+    )
+
+    if st.session_state.client_select not in client_names:
+        st.session_state.client_select = "— Jauns klients —"
+        st.session_state.last_client_select = "— Jauns klients —"
+
+    default_client_index = (
+        client_names.index(st.session_state.client_select)
+        if st.session_state.client_select in client_names else 0
+    )
+
+    st.markdown("### 👤 Izvēlies klientu")
+    col_client_dd, col_client_hint = st.columns([2, 1])
+    with col_client_dd:
+        selected_client = st.selectbox(
+            "Klients no saraksta",
+            client_names,
+            index=default_client_index,
+            key="client_select",
+        )
+    with col_client_hint:
+        st.caption(
+            "Ja klienta nav sarakstā, izvēlies „— Jauns klients —” un aizpildi datus zemāk. "
+            "Pēc dokumenta saglabāšanas klients automātiski tiks pievienots sarakstam."
+        )
+
+    if selected_client != st.session_state.last_client_select:
+        st.session_state.last_client_select = selected_client
+        if selected_client != "— Jauns klients —":
+            for c in clients:
+                if str(c.get('name', '')).strip() == selected_client:
+                    st.session_state.client_data = {
+                        'name':    c.get('name', ''),
+                        'address': c.get('address', ''),
+                        'reg_no':  c.get('reg_no', ''),
+                        'vat_no':  c.get('vat_no', ''),
+                    }
+                    break
+            else:
+                st.session_state.client_data = {
+                    'name': selected_client, 'address': '', 'reg_no': '', 'vat_no': ''
+                }
+
+    st.markdown("---")
 
     # -----------------------------------------------------------------------
     # Klienta dati
@@ -1070,16 +1261,145 @@ def render_invoice_app():
             st.info("Vēsture ir tukša.")
 
 # ---------------------------------------------------------------------------
+# render_clients_app
+# ---------------------------------------------------------------------------
+
+def render_clients_app():
+    st.header("📊 Klientu pārskats un statistika")
+    st.write("Pārskats par visiem klientiem, dokumentu skaitu un kopējām summām.")
+
+    if st.button("🔄 Atjaunot klientus no vēstures"):
+        _history = load_history(LOCAL_HISTORY_PATH)
+        _clients = clients_from_history(_history)
+        st.success(f"Klientu sarakstā: {len(_clients)} ieraksti.")
+        st.rerun()
+
+    history = load_history(LOCAL_HISTORY_PATH)
+    clients = clients_from_history(history)
+
+    if not history and not clients:
+        st.info("Nav datu — vispirms izveido dokumentus cilnē „Rēķina izveide”.")
+        return
+
+    # Agregējam datus pēc klienta
+    agg = {}
+    for e in history:
+        name = str(e.get('pr_partneris', e.get('client_name', '')) or '').strip()
+        if not name:
+            continue
+        key = _norm_client_name(name)
+        try:
+            total = float(
+                str(e.get('kopeja_summa', e.get('total', '0')) or '0')
+                .replace('\u00a0', '').replace(' ', '').replace(',', '.')
+            )
+        except Exception:
+            total = 0.0
+        a = agg.setdefault(key, {
+            'name': name,
+            'address': e.get('client_address', ''),
+            'reg_no': e.get('client_reg_no', ''),
+            'vat_no': e.get('pr_pvn_nr', e.get('client_vat_no', '')),
+            'count': 0,
+            'total': 0.0,
+            'last_date': '',
+        })
+        a['count'] += 1
+        a['total'] += total
+        d = str(e.get('datums', e.get('date', '')) or '')
+        if d and d > a['last_date']:
+            a['last_date'] = d
+
+    # Pievienojam klientus, kuriem vēl nav dokumentu
+    for c in clients:
+        name = str(c.get('name', '') or '').strip()
+        if not name:
+            continue
+        key = _norm_client_name(name)
+        if key not in agg:
+            agg[key] = {
+                'name': name,
+                'address': c.get('address', ''),
+                'reg_no': c.get('reg_no', ''),
+                'vat_no': c.get('vat_no', ''),
+                'count': 0,
+                'total': 0.0,
+                'last_date': '',
+            }
+
+    rows = sorted(agg.values(), key=lambda r: r['total'], reverse=True)
+    stats_df = pd.DataFrame(rows)
+
+    total_clients = len(rows)
+    total_docs = int(sum(r['count'] for r in rows))
+    total_sum = float(sum(r['total'] for r in rows))
+
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("👥 Klientu skaits", total_clients)
+    with m2:
+        st.metric("📄 Dokumentu skaits", total_docs)
+    with m3:
+        st.metric("💶 Kopējā summa", f"€ {total_sum:,.2f}".replace(",", " "))
+
+    st.markdown("---")
+
+    # Top klientu diagramma
+    if not stats_df.empty and float(stats_df['total'].sum()) > 0:
+        st.subheader("🔝 Top klienti pēc apgrozījuma")
+        top_df = stats_df.nlargest(10, 'total')[['name', 'total']].copy()
+        top_df = top_df.rename(columns={'name': 'Klients', 'total': 'Summa (EUR)'})
+        st.bar_chart(top_df.set_index('Klients'))
+
+    st.markdown("---")
+    st.subheader("📋 Klientu tabula")
+
+    display = stats_df[['name', 'address', 'reg_no', 'vat_no', 'count', 'total', 'last_date']].copy()
+    display = display.rename(columns={
+        'name':      'Klients',
+        'address':   'Adrese',
+        'reg_no':    'Reģ. Nr.',
+        'vat_no':    'PVN Nr.',
+        'count':     'Dokumenti',
+        'total':     'Kopējā summa (EUR)',
+        'last_date': 'Pēdējais datums',
+    })
+    display['Kopējā summa (EUR)'] = pd.to_numeric(display['Kopējā summa (EUR)'], errors='coerce').fillna(0).round(2)
+
+    st.dataframe(
+        display,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Kopējā summa (EUR)": st.column_config.NumberColumn(format="%.2f"),
+            "Dokumenti": st.column_config.NumberColumn(format="%d"),
+        },
+    )
+
+    # CSV lejupielāde
+    csv_bytes = display.to_csv(index=False).encode('utf-8-sig')
+    st.download_button(
+        "📥 Lejupielādēt klientu pārskatu (CSV)",
+        data=csv_bytes,
+        file_name=f"klientu_parskats_{datetime.date.today().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+    )
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
 def main():
     st.title("SIA BRATUS Rēķinu Ģenerators")
-    tab_invoice, tab_presets = st.tabs(["📄 Rēķina izveide", "⚙️ Produktu sagataves"])
+    tab_invoice, tab_presets, tab_clients = st.tabs([
+        "📄 Rēķina izveide", "⚙️ Produktu sagataves", "📊 Klientu pārskats"
+    ])
     with tab_invoice:
         render_invoice_app()
     with tab_presets:
         render_presets_app()
+    with tab_clients:
+        render_clients_app()
 
 if __name__ == "__main__":
     main()
