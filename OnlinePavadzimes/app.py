@@ -723,7 +723,7 @@ def render_invoice_app():
     default_doc_date = st.session_state.get('loaded_doc_date', datetime.date.today())
     doc_date = st.sidebar.date_input("Datums", default_doc_date)
 
-    default_due_date = st.session_state.get('loaded_due_date', doc_date + datetime.timedelta(days=14))
+    default_due_date = st.session_state.get('loaded_due_date', doc_date + datetime.timedelta(days=7))
     due_date = st.sidebar.date_input("Apmaksāt līdz", default_due_date)
 
     st.sidebar.markdown("---")
