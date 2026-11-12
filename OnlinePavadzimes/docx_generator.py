@@ -7,6 +7,8 @@ from docx.oxml import parse_xml
 import io
 import os
 
+from i18n import labels, doc_type_label, signature_texts, totals_rows
+
 def fmt_curr(val):
     return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
 
@@ -76,19 +78,21 @@ def generate_docx(data):
     p = cell_info.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     
+    lang = data.get('lang', 'lv')
+    L = labels(lang)
     doc_type = data.get('doc_type', 'Pavadzīme')
-    display_doc_type = "Rēķins" if "e-rēķins" in doc_type.lower() else doc_type
+    display_doc_type = doc_type_label("Rēķins" if "e-rēķins" in doc_type.lower() else doc_type, lang)
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
     due_date = data.get('due_date', '')
     
     # Virsraksts 14pt un Treknrakstā
-    run = p.add_run(f"{display_doc_type} Nr. {doc_id}\n")
+    run = p.add_run(f"{display_doc_type} {L['nr']} {doc_id}\n")
     run.bold = True
     run.font.size = Pt(14)
     
-    p.add_run(f"\nDatums: {date}\n")
-    p.add_run(f"Apmaksāt līdz: {due_date}")
+    p.add_run(f"\n{L['date']}: {date}\n")
+    p.add_run(f"{L['due_date']}: {due_date}")
     
     doc.add_paragraph()
     add_horizontal_line(doc)
@@ -121,35 +125,35 @@ def generate_docx(data):
         # Receiver
         cell_recv = table.cell(0, 0)
         p_recv = cell_recv.paragraphs[0]
-        p_recv.add_run("Saņēmējs\n\n").bold = True
+        p_recv.add_run(f"{L['receiver']}\n\n").bold = True
         p_recv.add_run(f"{data.get('receiver_name', '')}\n").bold = True
-        p_recv.add_run(f"Reģ. Nr.: ").bold = True
+        p_recv.add_run(f"{L['reg_no']}: ").bold = True
         p_recv.add_run(f"{data.get('receiver_reg_no', '')}")
 
         # Customer
         cell_cust = table.cell(0, 1)
         p_cust = cell_cust.paragraphs[0]
-        p_cust.add_run("Pasūtītājs\n\n").bold = True
+        p_cust.add_run(f"{L['customer']}\n\n").bold = True
         p_cust.add_run(f"{data.get('customer_name', '')}\n").bold = True
-        p_cust.add_run(f"Reģistrācijas nr.: ").bold = True
+        p_cust.add_run(f"{L['reg_no']}: ").bold = True
         p_cust.add_run(f"{data.get('customer_reg_no', '')}\n")
-        p_cust.add_run(f"Juridiskā adrese: ").bold = True
+        p_cust.add_run(f"{L['legal_address']}: ").bold = True
         p_cust.add_run(f"{data.get('customer_address', '')}")
 
         doc.add_paragraph()
         add_horizontal_line(doc)
 
         p = doc.add_paragraph()
-        p.add_run("Nosūtītājs").bold = True
+        p.add_run(L['sender']).bold = True
     else:
         p = doc.add_paragraph()
-        p.add_run("KLIENTS").bold = True
+        p.add_run(L['client']).bold = True
 
         p = doc.add_paragraph()
         p.add_run(data.get('client_name', '')).bold = True
-        p.add_run(f"\nAdrese: {data.get('client_address', '')}").italic = True
-        p.add_run(f"\nReģ. Nr.: {data.get('client_reg_no', '')}").italic = True
-        p.add_run(f"\nPVN Nr.: {data.get('client_vat_no', '')}").italic = True
+        p.add_run(f"\n{L['address']}: {data.get('client_address', '')}").italic = True
+        p.add_run(f"\n{L['reg_no']}: {data.get('client_reg_no', '')}").italic = True
+        p.add_run(f"\n{L['vat_no']}: {data.get('client_vat_no', '')}").italic = True
 
         doc.add_paragraph()
         add_horizontal_line(doc)
@@ -166,11 +170,11 @@ def generate_docx(data):
     cell = table.cell(0, 0)
     p = cell.paragraphs[0]
     p.add_run("SIA Bratus").bold = True
-    p.add_run("\nAdrese: Ķekavas nov., Ķekava,").italic = True
-    p.add_run("\nDārzenieku iela 42, LV-2123").italic = True
-    p.add_run("\nReģ. Nr.: 40203628316").italic = True
-    p.add_run("\nPVN Nr.: LV40203628316").italic = True
-    p.add_run("\nTālrunis: +371 24424434").italic = True
+    p.add_run(f"\n{L['address']}: {L['seller_address'][0]}").italic = True
+    p.add_run(f"\n{L['seller_address'][1]}").italic = True
+    p.add_run(f"\n{L['reg_no']}: 40203628316").italic = True
+    p.add_run(f"\n{L['vat_no']}: LV40203628316").italic = True
+    p.add_run(f"\n{L['phone']}: +371 24424434").italic = True
     
     # Bank
     cell = table.cell(0, 1)
@@ -179,7 +183,7 @@ def generate_docx(data):
     run_bank.bold = True
     run_bank.italic = True
     p.add_run("\nSWIFT/BIC: HABALV22").italic = True
-    p.add_run("\nBankas konta numurs: ").italic = True
+    p.add_run(f"\n{L['bank_account']}: ").italic = True
     p.add_run("LV64HABA0551060367591").bold = True
     
     doc.add_paragraph()
@@ -187,7 +191,7 @@ def generate_docx(data):
     # ==========================================
     # 4. PREČU TABULA
     # ==========================================
-    headers = ["NOSAUKUMS", "Mērvienība", "DAUDZUMS", "CENA (EUR)", "KOPĀ (EUR)"]
+    headers = [L['col_name'], L['col_unit'], L['col_qty'], L['col_price'], L['col_total']]
     items = data.get('items', [])
     
     table = doc.add_table(rows=1, cols=5)
@@ -230,17 +234,11 @@ def generate_docx(data):
     # ==========================================
     # 5. KOPSUMMAS
     # ==========================================
-    subtotal = data.get('subtotal', '0.00')
-    vat = data.get('vat', '0.00')
-    total = data.get('total', '0.00')
-    raw_discount_eur = data.get('raw_discount_eur', 0.0)
-    
     is_advance_doc = ("avansa" in doc_type.lower())
-    
-    num_rows = 5 if raw_discount_eur > 0 else 3
+    rows = totals_rows(data)
 
     # Veidojam tabulu BEZ apmalēm (Table Normal stils to nodrošina automātiski)
-    table = doc.add_table(rows=num_rows, cols=3)
+    table = doc.add_table(rows=len(rows), cols=3)
     table.autofit = False
     table.columns[0].width = Cm(8.5)
     table.columns[1].width = Cm(5.5)
@@ -254,31 +252,12 @@ def generate_docx(data):
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         
         p = cell_val.paragraphs[0]
-        p.add_run(f"{value} €").bold = val_bold
+        p.add_run(value).bold = val_bold
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
-    if is_advance_doc:
-        if raw_discount_eur > 0:
-            set_total_row(0, "KOPĀ (bez PVN un atlaides)", subtotal, False, False)
-            set_total_row(1, f"Atlaides apjoms ({data.get('discount_percent', 0):g}%)", f"-{data.get('discount_eur', '0.00')}", False, False)
-            set_total_row(2, "Kopā ar atlaidi (bez PVN)", data.get('subtotal_after_discount', '0.00'), False, False)
-            set_total_row(3, "PVN", vat, False, False)
-            set_total_row(4, "KOPUMĀ APMAKSAI", total, False, False)
-        else:
-            set_total_row(0, "KOPĀ", subtotal, False, False)
-            set_total_row(1, "PVN", vat, False, False)
-            set_total_row(2, "Kopumā", total, False, False)
-    else:
-        if raw_discount_eur > 0:
-            set_total_row(0, "KOPĀ (bez PVN un atlaides)", subtotal, True, False)
-            set_total_row(1, f"Atlaides apjoms ({data.get('discount_percent', 0):g}%)", f"-{data.get('discount_eur', '0.00')}", True, False)
-            set_total_row(2, "Kopā ar atlaidi (bez PVN)", data.get('subtotal_after_discount', '0.00'), True, False)
-            set_total_row(3, "PVN", vat, True, False)
-            set_total_row(4, "KOPUMĀ APMAKSAI", total, True, True)
-        else:
-            set_total_row(0, "KOPĀ", subtotal, True, False)
-            set_total_row(1, "PVN", vat, True, False)
-            set_total_row(2, "Kopumā", total, True, True)
+    for i, (label, value) in enumerate(rows):
+        is_last = (i == len(rows) - 1)
+        set_total_row(i, label, value, not is_advance_doc, is_last and not is_advance_doc)
     
     # ==========================================
     # 6. SUMMA VĀRDIEM UN AVANSS
@@ -291,14 +270,20 @@ def generate_docx(data):
         
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        p.add_run(f"APMAKSĀJAMAIS AVANSS ({percent_val}%): {formatted_advance} €").bold = True
+        p.add_run(f"{L['advance_due']} ({percent_val}%): {formatted_advance} €").bold = True
 
     doc.add_paragraph()
     
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    prefix = "Vārdiem: "
+    prefix = L['in_words']
     p.add_run(f"{prefix}{data.get('amount_words', '')}").italic = True
+
+    vat_note = data.get('vat_note', '').strip()
+    if not data.get('vat_enabled', True) and vat_note:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        p.add_run(vat_note).italic = True
     
     doc.add_paragraph()
     add_horizontal_line(doc)
@@ -309,7 +294,7 @@ def generate_docx(data):
     comments = data.get('comments', '').strip()
     if comments:
         p_info = doc.add_paragraph()
-        p_info.add_run("Papildus informācija:").bold = True
+        p_info.add_run(L['comments']).bold = True
         p_info.add_run(f"\n{comments}")
     
     doc.add_paragraph()
@@ -317,15 +302,8 @@ def generate_docx(data):
     
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
     
-    if "pavadzīme" in doc_type.lower():
-        prepared_text = f"Pavadzīmi sagatavoja: "
-        received_text = "Pavadzīmi saņēma:"
-    elif "avansa rēķins" in doc_type.lower():
-        prepared_text = f"Avansa rēķinu sagatavoja: "
-        received_text = "Avansa rēķinu saņēma:"
-    else:
-        prepared_text = f"Rēķinu sagatavoja: "
-        received_text = "Rēķinu saņēma:"
+    prepared_text, received_text = signature_texts(doc_type, lang)
+    prepared_text += " "
         
     table = doc.add_table(rows=2, cols=2)
     table.autofit = False

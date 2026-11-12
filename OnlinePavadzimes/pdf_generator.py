@@ -10,6 +10,8 @@ import urllib.request
 import io
 import os
 
+from i18n import labels, doc_type_label, signature_texts, totals_rows
+
 # --- Krāsu definīcijas ---
 THEME_COLOR = colors.HexColor("#CDBF96")
 TEXT_COLOR = colors.black
@@ -148,18 +150,20 @@ def generate_pdf(data):
     else:
         logo = Paragraph("LOGO", style_bold)
     
+    lang = data.get('lang', 'lv')
+    L = labels(lang)
     doc_type = data.get('doc_type', 'Pavadzīme')
-    display_doc_type = "Pavadzīme" if "e-rēķins" in doc_type.lower() else doc_type
+    display_doc_type = doc_type_label("Pavadzīme" if "e-rēķins" in doc_type.lower() else doc_type, lang)
 
     doc_id = data.get('doc_id', 'BR 0000')
     date = data.get('date', '')
     due_date = data.get('due_date', '')
     
     header_text = [
-        Paragraph(f"{display_doc_type} Nr. {doc_id}", style_header_title),
+        Paragraph(f"{display_doc_type} {L['nr']} {doc_id}", style_header_title),
         Spacer(1, 2*mm),
-        Paragraph(f"Datums: {date}", style_header_info),
-        Paragraph(f"Apmaksāt līdz: {due_date}", style_header_info),
+        Paragraph(f"{L['date']}: {date}", style_header_info),
+        Paragraph(f"{L['due_date']}: {due_date}", style_header_info),
     ]
     
     header_table = Table([[logo, header_text]], colWidths=[85*mm, 85*mm])
@@ -188,8 +192,8 @@ def generate_pdf(data):
         cus_addr = data.get('customer_address', '')
 
         # Izmantojam vienu HTML stila Paragraph katram, lai garantētu lauku neizzušanu
-        rec_text = f"<b>Saņēmējs</b><br/><br/><b>{rec_name}</b><br/><b>Reģ. Nr.:</b> {rec_reg}<br/><b>Juridiskā adrese:</b> {rec_addr}"
-        cus_text = f"<b>Pasūtītājs</b><br/><br/><b>{cus_name}</b><br/><b>Reģ. Nr.:</b> {cus_reg}<br/><b>Juridiskā adrese:</b> {cus_addr}"
+        rec_text = f"<b>{L['receiver']}</b><br/><br/><b>{rec_name}</b><br/><b>{L['reg_no']}:</b> {rec_reg}<br/><b>{L['legal_address']}:</b> {rec_addr}"
+        cus_text = f"<b>{L['customer']}</b><br/><br/><b>{cus_name}</b><br/><b>{L['reg_no']}:</b> {cus_reg}<br/><b>{L['legal_address']}:</b> {cus_addr}"
 
         receiver_para = Paragraph(rec_text, style_normal)
         customer_para = Paragraph(cus_text, style_normal)
@@ -205,16 +209,16 @@ def generate_pdf(data):
         elements.append(HorizontalLine(thickness=0.2))
         elements.append(Spacer(1, 5*mm))
 
-        elements.append(Paragraph("<b>Nosūtītājs</b>", style_normal))
+        elements.append(Paragraph(f"<b>{L['sender']}</b>", style_normal))
         elements.append(Spacer(1, 3*mm))
     else:
-        elements.append(Paragraph("KLIENTS", style_bold))
+        elements.append(Paragraph(L['client'], style_bold))
         elements.append(Spacer(1, 2*mm))
 
         elements.append(Paragraph(f"<b>{data.get('client_name', '')}</b>", style_normal))
-        elements.append(Paragraph(f"<i>Adrese: {data.get('client_address', '')}</i>", style_normal))
-        elements.append(Paragraph(f"<i>Reģ. Nr.: {data.get('client_reg_no', '')}</i>", style_normal))
-        elements.append(Paragraph(f"<i>PVN Nr.: {data.get('client_vat_no', '')}</i>", style_normal))
+        elements.append(Paragraph(f"<i>{L['address']}: {data.get('client_address', '')}</i>", style_normal))
+        elements.append(Paragraph(f"<i>{L['reg_no']}: {data.get('client_reg_no', '')}</i>", style_normal))
+        elements.append(Paragraph(f"<i>{L['vat_no']}: {data.get('client_vat_no', '')}</i>", style_normal))
 
         elements.append(Spacer(1, 3*mm))
         elements.append(HorizontalLine(thickness=0.2))
@@ -225,17 +229,17 @@ def generate_pdf(data):
     # ==========================================
     sender_data = [
         Paragraph("<b>SIA Bratus</b>", style_normal),
-        Paragraph(f"<i>Adrese: Ķekavas nov., Ķekava,</i>", style_normal),
-        Paragraph(f"<i>Dārzenieku iela 42, LV-2123</i>", style_normal),
-        Paragraph(f"<i>Reģ. Nr.: 40203628316</i>", style_normal),
-        Paragraph(f"<i>PVN Nr.: LV40203628316</i>", style_normal),
-        Paragraph(f"<i>Tālrunis: +371 24424434</i>", style_normal),
+        Paragraph(f"<i>{L['address']}: {L['seller_address'][0]}</i>", style_normal),
+        Paragraph(f"<i>{L['seller_address'][1]}</i>", style_normal),
+        Paragraph(f"<i>{L['reg_no']}: 40203628316</i>", style_normal),
+        Paragraph(f"<i>{L['vat_no']}: LV40203628316</i>", style_normal),
+        Paragraph(f"<i>{L['phone']}: +371 24424434</i>", style_normal),
     ]
     
     bank_data = [
         Paragraph("<b><i>AS Swedbank</i></b>", style_normal),
         Paragraph(f"<i>SWIFT/BIC: HABALV22</i>", style_normal),
-        Paragraph(f"<i>Bankas konta numurs: <b>LV64HABA0551060367591</b></i>", style_normal),
+        Paragraph(f"<i>{L['bank_account']}: <b>LV64HABA0551060367591</b></i>", style_normal),
     ]
     
     info_table = Table([[sender_data, bank_data]], colWidths=[85*mm, 85*mm])
@@ -251,11 +255,11 @@ def generate_pdf(data):
     # 4. PREČU TABULA
     # ==========================================
     headers = [
-        Paragraph("NOSAUKUMS", style_table_header),
-        Paragraph("Mērvienība", style_table_header),
-        Paragraph("DAUDZUMS", style_table_header),
-        Paragraph("CENA (EUR)", style_table_header),
-        Paragraph("KOPĀ (EUR)", style_table_header)
+        Paragraph(L['col_name'], style_table_header),
+        Paragraph(L['col_unit'], style_table_header),
+        Paragraph(L['col_qty'], style_table_header),
+        Paragraph(L['col_price'], style_table_header),
+        Paragraph(L['col_total'], style_table_header)
     ]
     
     table_data = [headers]
@@ -298,28 +302,9 @@ def generate_pdf(data):
     # ==========================================
     elements.append(Spacer(1, 2*mm))
     
-    subtotal = data.get('subtotal', '0.00')
-    vat = data.get('vat', '0.00')
-    total = data.get('total', '0.00')
-    
-    raw_discount_eur = data.get('raw_discount_eur', 0.0)
+    totals_data = [["", label, value] for label, value in totals_rows(data)]
+    last_row_idx = len(totals_data) - 1
 
-    totals_data = []
-
-    if raw_discount_eur > 0:
-        totals_data.append(["", "KOPĀ (bez PVN un atlaides)", f"{subtotal} €"])
-        discount_str = f"Atlaides apjoms ({data.get('discount_percent', 0):g}%)"
-        totals_data.append(["", discount_str, f"-{data.get('discount_eur', '0.00')} €"])
-        totals_data.append(["", "Kopā ar atlaidi (bez PVN)", f"{data.get('subtotal_after_discount', '0.00')} €"])
-        totals_data.append(["", "PVN", f"{vat} €"])
-        totals_data.append(["", "KOPUMĀ APMAKSAI", f"{total} €"])
-        last_row_idx = 4
-    else:
-        totals_data.append(["", "KOPĀ", f"{subtotal} €"])
-        totals_data.append(["", "PVN", f"{vat} €"])
-        totals_data.append(["", "Kopumā", f"{total} €"])
-        last_row_idx = 2
-    
     totals_table = Table(totals_data, colWidths=[80*mm, 60*mm, 30*mm])
     
     if "avansa" in doc_type.lower():
@@ -351,14 +336,19 @@ def generate_pdf(data):
         formatted_advance = fmt_curr(raw_advance)
         percent_val = int(round(data.get('advance_percent', 0)))
         
-        bold_text = f'<font name="{BOLD_FONT}">APMAKSĀJAMAIS AVANSS ({percent_val}%): {formatted_advance} €</font>'
+        bold_text = f'<font name="{BOLD_FONT}">{L['advance_due']} ({percent_val}%): {formatted_advance} €</font>'
         elements.append(Paragraph(bold_text, style_cell_right))
         elements.append(Spacer(1, 2*mm))
 
     amount_words = data.get('amount_words', '')
-    prefix = "Vārdiem: "
+    prefix = L['in_words']
     elements.append(Paragraph(f"<i>{prefix}{amount_words}</i>", 
                               ParagraphStyle('Words', parent=style_italic, alignment=TA_RIGHT)))
+
+    vat_note = data.get('vat_note', '').strip()
+    if not data.get('vat_enabled', True) and vat_note:
+        elements.append(Spacer(1, 2*mm))
+        elements.append(Paragraph(vat_note, ParagraphStyle('VatNote', parent=style_italic, alignment=TA_RIGHT)))
     
     # ==========================================
     # 7. PAPILDINFO (Komentāri)
@@ -366,7 +356,7 @@ def generate_pdf(data):
     comments = data.get('comments', '').strip()
     if comments:
         elements.append(Spacer(1, 10*mm))
-        elements.append(Paragraph(f"<font name='{BOLD_FONT}'>Papildus informācija:</font>", style_bold))
+        elements.append(Paragraph(f"<font name='{BOLD_FONT}'>{L['comments']}</font>", style_bold))
         comments_html = comments.replace('\n', '<br/>')
         elements.append(Paragraph(comments_html, style_normal))
 
@@ -379,15 +369,8 @@ def generate_pdf(data):
     
     signatory = data.get('signatory', 'SIA Bratus valdes loceklis Adrians Stankevičs')
     
-    if "pavadzīme" in doc_type.lower():
-        prepared_text = f"Pavadzīmi sagatavoja: <i>{signatory}</i>"
-        received_text = "Pavadzīmi saņēma:"
-    elif "avansa rēķins" in doc_type.lower():
-        prepared_text = f"Avansa rēķinu sagatavoja: <i>{signatory}</i>"
-        received_text = "Avansa rēķinu saņēma:"
-    else:
-        prepared_text = f"Rēķinu sagatavoja: <i>{signatory}</i>"
-        received_text = "Rēķinu saņēma:"
+    prepared_label, received_text = signature_texts(doc_type, lang)
+    prepared_text = f"{prepared_label} <i>{signatory}</i>"
     
     sig_table_data = [
         [Paragraph(prepared_text, style_italic), "__________________________"],

@@ -14,7 +14,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-from utils import scrape_lursoft, money_to_words_lv
+from utils import scrape_lursoft, money_to_words_lv, money_to_words_en
+from i18n import LANGUAGES, labels, doc_type_label
 from pdf_generator import generate_pdf
 from docx_generator import generate_docx
 
@@ -47,7 +48,8 @@ HISTORY_COLS = [
     'kartas_nr', 'datums', 'pr_partneris', 'pr_pvn_nr',
     'pr_datums', 'pr_numurs', 'darijuma_apraksts',
     'vertiba_bez_pvn', 'dabas_resursi', 'atlaides', 'pvn_summa', 'kopeja_summa',
-    'due_date', 'client_reg_no', 'client_address', 'doc_type', 'items_json', 'comments', 'created_at'
+    'due_date', 'client_reg_no', 'client_address', 'doc_type', 'items_json', 'comments', 'created_at',
+    'language', 'vat_rate', 'vat_note'
 ]
 
 # CSV kolonnas klientu sarakstam
@@ -244,8 +246,8 @@ def save_to_history(invoice_data, local_path, github_path):
     items        = invoice_data.get('items', [])
     raw_total    = float(invoice_data.get('raw_total', 0) or 0)
     raw_discount = float(invoice_data.get('raw_discount_eur', 0) or 0)
-    base_amount  = round(raw_total / 1.21, 2)
-    vat_amount   = round(raw_total - base_amount, 2)
+    vat_amount   = round(float(invoice_data.get('raw_vat', 0) or 0), 2)
+    base_amount  = round(raw_total - vat_amount, 2)
     descriptions = [it.get('name', '') for it in items if it.get('name')]
     pr_numurs    = invoice_data.get('doc_id', '')
     existing_nums = [int(str(e.get('kartas_nr', 0)).strip() or 0) for e in history]
@@ -270,6 +272,9 @@ def save_to_history(invoice_data, local_path, github_path):
         'items_json':        json.dumps(items, ensure_ascii=False),
         'comments':          invoice_data.get('comments', ''),
         'created_at':        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'language':          invoice_data.get('lang', 'lv'),
+        'vat_rate':          invoice_data.get('vat_rate', 21) if invoice_data.get('vat_enabled', True) else 0,
+        'vat_note':          invoice_data.get('vat_note', ''),
         'items':             items,
         'doc_id':            pr_numurs,
         'client_name':       invoice_data.get('client_name', ''),
@@ -474,6 +479,13 @@ def load_invoice_into_form(entry):
     loaded_type = proforma_map.get(loaded_type, loaded_type)
     st.session_state.loaded_doc_type = loaded_type
     st.session_state.loaded_comments = entry.get('comments', '')
+    # Vecajos ierakstos šo kolonnu nav (NaN) → LV ar PVN
+    lang = entry.get('language', 'lv')
+    st.session_state.loaded_lang = lang if lang in LANGUAGES.values() else 'lv'
+    vat_rate = str(entry.get('vat_rate', '') or '').strip()
+    st.session_state.loaded_vat_enabled = vat_rate not in ('0', '0.0')
+    vat_note = entry.get('vat_note', '')
+    st.session_state.loaded_vat_note = vat_note if isinstance(vat_note, str) else ''
     try:
         date_str = entry.get('datums', entry.get('date', ''))
         if date_str:
@@ -888,7 +900,26 @@ def render_invoice_app():
     dt_index = 0
     if 'loaded_doc_type' in st.session_state and st.session_state.loaded_doc_type in doc_types:
         dt_index = doc_types.index(st.session_state.loaded_doc_type)
-    doc_type = st.selectbox("Dokumenta tips", doc_types, index=dt_index)
+    col_dt, col_lang, col_vat = st.columns([2, 1, 1])
+    with col_dt:
+        doc_type = st.selectbox("Dokumenta tips", doc_types, index=dt_index)
+    with col_lang:
+        lang_names = list(LANGUAGES.keys())
+        loaded_lang = st.session_state.get('loaded_lang', 'lv')
+        lang_index = list(LANGUAGES.values()).index(loaded_lang) if loaded_lang in LANGUAGES.values() else 0
+        lang = LANGUAGES[st.selectbox("Dokumenta valoda", lang_names, index=lang_index)]
+    with col_vat:
+        st.write("")
+        st.write("")
+        vat_enabled = st.toggle("Piemērot PVN 21%", value=st.session_state.get('loaded_vat_enabled', True))
+    vat_note = ""
+    if not vat_enabled:
+        vat_note = st.text_input(
+            "PVN nepiemērošanas pamatojums (neobligāts, tiks parādīts dokumentā)",
+            value=st.session_state.get('loaded_vat_note', ''),
+            placeholder=("Reverse charge – Article 196 of Council Directive 2006/112/EC" if lang == 'en'
+                         else "Nodokļa apgrieztā maksāšana – PVN likuma 143. pants"),
+        )
 
     if 'client_data' not in st.session_state:
         st.session_state.client_data = {'name': '', 'address': '', 'reg_no': '', 'vat_no': ''}
@@ -1021,6 +1052,8 @@ def render_invoice_app():
     def fmt_curr(val):
         return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", " ")
 
+    money_to_words = money_to_words_en if lang == 'en' else money_to_words_lv
+
     try:
         if not edited_df.empty:
             calc_df['DAUDZUMS']   = pd.to_numeric(calc_df['DAUDZUMS'],   errors='coerce').fillna(0)
@@ -1038,7 +1071,7 @@ def render_invoice_app():
                 discount_percent = (discount_eur / subtotal * 100) if subtotal > 0 else 0
 
             subtotal_after_discount = subtotal - discount_eur
-            vat   = subtotal_after_discount * 0.21
+            vat   = subtotal_after_discount * 0.21 if vat_enabled else 0.0
             total = subtotal_after_discount + vat
 
             if doc_type == "Avansa rēķins":
@@ -1054,7 +1087,7 @@ def render_invoice_app():
                 with t_col2:
                     st.markdown(f"Kopējā pasūtījuma summa: € {fmt_curr(total)}")
                     st.markdown(f"**APMAKSĀJAMAIS AVANSS ({int(round(advance_percent))}%):** € {fmt_curr(advance_payment)}")
-                amount_words = money_to_words_lv(advance_payment)
+                amount_words = money_to_words(advance_payment)
                 st.info(f"**Summa vārdiem (Avanss):** {amount_words}")
             else:
                 advance_payment = total
@@ -1064,9 +1097,12 @@ def render_invoice_app():
                     if discount_eur > 0:
                         st.markdown(f"**Atlaides apjoms ({discount_percent:g}%):** € -{fmt_curr(discount_eur)}")
                         st.markdown(f"**Kopā ar atlaidi (bez PVN):** € {fmt_curr(subtotal_after_discount)}")
-                    st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
+                    if vat_enabled:
+                        st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
+                    else:
+                        st.markdown("**PVN:** nepiemēro")
                     st.markdown(f"**KOPUMĀ APMAKSAI:** € {fmt_curr(total)}")
-                amount_words = money_to_words_lv(total)
+                amount_words = money_to_words(total)
                 st.info(f"**Summa vārdiem:** {amount_words}")
     except Exception as e:
         st.error(f"Kļūda aprēķinos: {e}")
@@ -1088,8 +1124,11 @@ def render_invoice_app():
     with col_sig1:
         selected_signatory = st.selectbox("Dokumentu sagatavoja", signatory_options, index=1, key="sig_select")
     with col_sig2:
-        signatory_title = st.text_input("Amats", "valdes loceklis", key="sig_title")
-    full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
+        signatory_title = st.text_input("Amats", labels(lang)['default_title'], key=f"sig_title_{lang}")
+    if lang == 'en':
+        full_signatory = f"{selected_signatory}, {signatory_title}, SIA Bratus"
+    else:
+        full_signatory = f"SIA Bratus {signatory_title} {selected_signatory}"
     st.caption(f"Paraksta laukā būs: {full_signatory}")
 
     # -----------------------------------------------------------------------
@@ -1099,6 +1138,11 @@ def render_invoice_app():
     invoice_data = {
         'doc_type':                doc_type,
         'doc_id':                  doc_id,
+        'lang':                    lang,
+        'vat_enabled':             vat_enabled,
+        'vat_rate':                21,
+        'vat_note':                vat_note,
+        'raw_vat':                 vat,
         'date':                    doc_date.strftime("%d.%m.%Y"),
         'due_date':                due_date.strftime("%d.%m.%Y"),
         'client_name':             st.session_state.client_data['name'],
@@ -1161,10 +1205,11 @@ def render_invoice_app():
         invoice_data['doc_type'] = type_map.get(doc_type, doc_type)
 
     d_col1, d_col2 = st.columns(2)
+    file_base = f"{doc_type_label(invoice_data['doc_type'], lang).replace(' ', '_')}_{doc_id.replace(' ', '_')}"
 
     try:
         pdf_file      = generate_pdf(invoice_data)
-        file_name_pdf = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.pdf"
+        file_name_pdf = f"{file_base}.pdf"
         with d_col1:
             st.download_button(
                 label="📄 Lejupielādēt PDF",
@@ -1179,7 +1224,7 @@ def render_invoice_app():
 
     try:
         docx_file      = generate_docx(invoice_data)
-        file_name_docx = f"{invoice_data['doc_type'].replace(' ', '_')}_{doc_id.replace(' ', '_')}.docx"
+        file_name_docx = f"{file_base}.docx"
         with d_col2:
             st.download_button(
                 label="📝 Lejupielādēt Word",

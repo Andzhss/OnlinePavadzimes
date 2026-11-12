@@ -21,6 +21,19 @@ def money_to_words_lv(amount):
     except Exception as e:
         return f"Kļūda aprēķinā: {e}"
 
+def money_to_words_en(amount):
+    """
+    Konvertē summu uz vārdiem angļu valodā.
+    Piemērs: 4505.00 -> "Four thousand, five hundred and five euro 00 cents"
+    """
+    try:
+        euros = int(amount)
+        cents = int(round((amount - euros) * 100))
+        words = num2words(euros, lang='en').capitalize()
+        return f"{words} euro {cents:02d} cents"
+    except Exception as e:
+        return f"Calculation error: {e}"
+
 def scrape_lursoft(url):
     """
     Nolasa uzņēmuma nosaukumu, Reģ. Nr., PVN Nr. un Adresi no Lursoft lapas.
