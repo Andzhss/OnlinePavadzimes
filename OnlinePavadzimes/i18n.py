@@ -26,10 +26,8 @@ LABELS = {
         'col_total':        "KOPĀ (EUR)",
         'subtotal':         "KOPĀ",
         'subtotal_pre':     "KOPĀ (bez PVN un atlaides)",
-        'subtotal_pre_nv':  "KOPĀ (bez atlaides)",
         'discount':         "Atlaides apjoms",
         'after_discount':   "Kopā ar atlaidi (bez PVN)",
-        'after_discount_nv': "Kopā ar atlaidi",
         'vat':              "PVN",
         'total':            "Kopumā",
         'total_due':        "KOPUMĀ APMAKSAI",
@@ -70,10 +68,8 @@ LABELS = {
         'col_total':        "AMOUNT (EUR)",
         'subtotal':         "SUBTOTAL",
         'subtotal_pre':     "SUBTOTAL (excl. VAT and discount)",
-        'subtotal_pre_nv':  "SUBTOTAL (before discount)",
         'discount':         "Discount",
         'after_discount':   "Subtotal after discount (excl. VAT)",
-        'after_discount_nv': "Subtotal after discount",
         'vat':              "VAT",
         'total':            "Total",
         'total_due':        "TOTAL DUE",
@@ -124,27 +120,22 @@ def signature_texts(doc_type, lang):
 
 def totals_rows(data):
     """Kopsummu rindas [(label, value_str)] — pēdējā ir apmaksājamā summa.
-    Ja PVN nav piemērots, PVN rinda netiek rādīta."""
+    Ja PVN nav piemērots, PVN rinda paliek ar 0% un 0,00."""
     L = labels(data.get('lang', 'lv'))
-    vat_on = data.get('vat_enabled', True)
-    vat_rate = data.get('vat_rate', 21)
+    vat_rate = data.get('vat_rate', 21) if data.get('vat_enabled', True) else 0
     subtotal = data.get('subtotal', '0.00')
     total = data.get('total', '0.00')
-    vat_label = f"{L['vat']} ({vat_rate:g}%)"
-    rows = []
+    vat_row = (f"{L['vat']} ({vat_rate:g}%)", f"{data.get('vat', '0.00')} €")
     if data.get('raw_discount_eur', 0.0) > 0:
-        rows.append((L['subtotal_pre'] if vat_on else L['subtotal_pre_nv'], f"{subtotal} €"))
-        rows.append((f"{L['discount']} ({data.get('discount_percent', 0):g}%)", f"-{data.get('discount_eur', '0.00')} €"))
-        rows.append((L['after_discount'] if vat_on else L['after_discount_nv'],
-                     f"{data.get('subtotal_after_discount', '0.00')} €"))
-        if vat_on:
-            rows.append((vat_label, f"{data.get('vat', '0.00')} €"))
-        rows.append((L['total_due'], f"{total} €"))
-    else:
-        if vat_on:
-            rows.append((L['subtotal'], f"{subtotal} €"))
-            rows.append((vat_label, f"{data.get('vat', '0.00')} €"))
-            rows.append((L['total'], f"{total} €"))
-        else:
-            rows.append((L['total_due'], f"{total} €"))
-    return rows
+        return [
+            (L['subtotal_pre'], f"{subtotal} €"),
+            (f"{L['discount']} ({data.get('discount_percent', 0):g}%)", f"-{data.get('discount_eur', '0.00')} €"),
+            (L['after_discount'], f"{data.get('subtotal_after_discount', '0.00')} €"),
+            vat_row,
+            (L['total_due'], f"{total} €"),
+        ]
+    return [
+        (L['subtotal'], f"{subtotal} €"),
+        vat_row,
+        (L['total'], f"{total} €"),
+    ]

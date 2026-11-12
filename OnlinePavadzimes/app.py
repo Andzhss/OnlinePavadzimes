@@ -1097,10 +1097,7 @@ def render_invoice_app():
                     if discount_eur > 0:
                         st.markdown(f"**Atlaides apjoms ({discount_percent:g}%):** € -{fmt_curr(discount_eur)}")
                         st.markdown(f"**Kopā ar atlaidi (bez PVN):** € {fmt_curr(subtotal_after_discount)}")
-                    if vat_enabled:
-                        st.markdown(f"**PVN (21%):** € {fmt_curr(vat)}")
-                    else:
-                        st.markdown("**PVN:** nepiemēro")
+                    st.markdown(f"**PVN ({21 if vat_enabled else 0}%):** € {fmt_curr(vat)}")
                     st.markdown(f"**KOPUMĀ APMAKSAI:** € {fmt_curr(total)}")
                 amount_words = money_to_words(total)
                 st.info(f"**Summa vārdiem:** {amount_words}")
