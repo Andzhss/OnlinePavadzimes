@@ -84,7 +84,12 @@ def _sig(name):
 
 def doc_url(name):
     """Lejupielādes saite ar parakstu — faila nosaukumu (BR numuru) uzminēt nepietiek."""
-    return f"{PUBLIC_URL}/docs/{_sig(name)}/{name}"
+    # ?v= — katrai faila versijai sava saite; citādi Cloudflare var atdot vecu (piem. izdzēstu) PDF
+    try:
+        version = os.stat(os.path.join(core.DOCS_DIR, name)).st_mtime_ns
+    except OSError:
+        version = 0
+    return f"{PUBLIC_URL}/docs/{_sig(name)}/{name}?v={version}"
 
 
 class Client(BaseModel):
@@ -299,8 +304,8 @@ async def download(request: Request) -> Response:
     name = os.path.basename(request.path_params['name'])
     path = os.path.join(core.DOCS_DIR, name)
     if not hmac.compare_digest(request.path_params['sig'], _sig(name)) or not os.path.isfile(path):
-        return JSONResponse({'error': 'nav atrasts'}, status_code=404)
-    return FileResponse(path, filename=name)
+        return JSONResponse({'error': 'nav atrasts'}, status_code=404, headers={"Cache-Control": "no-store"})
+    return FileResponse(path, filename=name, headers={"Cache-Control": "private, no-store"})
 
 
 if oauth:

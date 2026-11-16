@@ -11,6 +11,8 @@ Environment=PAVADZ_PUBLIC_URL=https://noliktavas-thinkpad.tailbfb842.ts.net:8787
 Environment=PAVADZ_ALLOWED_HOSTS=noliktavas-thinkpad.tailbfb842.ts.net,noliktavas-thinkpad.tailbfb842.ts.net:8787
 ExecStart=/opt/pavadzimes/.venv/bin/python mcp_server.py
 Restart=on-failure
+# Claude tur atvērtus savienojumus; bez šī restarts gaida 90 s
+TimeoutStopSec=5
 
 [Install]
 WantedBy=multi-user.target

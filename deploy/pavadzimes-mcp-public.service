@@ -14,6 +14,8 @@ Environment=PAVADZ_ALLOWED_HOSTS=pavadzimes.brworks.lv
 EnvironmentFile=/opt/pavadzimes/data/env
 ExecStart=/opt/pavadzimes/.venv/bin/python mcp_server.py
 Restart=on-failure
+# Claude tur atvērtus savienojumus; bez šī restarts gaida 90 s
+TimeoutStopSec=5
 
 [Install]
 WantedBy=multi-user.target
