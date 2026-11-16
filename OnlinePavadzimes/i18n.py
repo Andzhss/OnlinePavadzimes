@@ -14,7 +14,7 @@ LABELS = {
         'vat_no':           "PVN Nr.",
         'phone':            "Tālrunis",
         'bank_account':     "Bankas konta numurs",
-        'seller_address':   ["Ķekavas nov., Ķekava,", "Dārzenieku iela 42, LV-2123"],
+        'seller_address':   ["Ķekavas nov., Ķekava,", "Pliederu iela 22, LV-2123"],
         'receiver':         "Saņēmējs",
         'customer':         "Pasūtītājs",
         'sender':           "Nosūtītājs",
@@ -56,7 +56,7 @@ LABELS = {
         'vat_no':           "VAT No.",
         'phone':            "Phone",
         'bank_account':     "Bank account (IBAN)",
-        'seller_address':   ["Dārzenieku iela 42, Ķekava,", "Ķekavas nov., LV-2123, Latvia"],
+        'seller_address':   ["Pliederu iela 22, Ķekava,", "Ķekava Municipality, LV-2123, Latvia"],
         'receiver':         "Recipient",
         'customer':         "Customer",
         'sender':           "Sender",
@@ -77,12 +77,12 @@ LABELS = {
         'in_words':         "In words: ",
         'comments':         "Additional information:",
         'prepared': {
-            'pavadzīme':     "Delivery note prepared by:",
+            'pavadzīme':     "Invoice prepared by:",
             'avansa rēķins': "Advance invoice prepared by:",
             'rēķins':        "Invoice prepared by:",
         },
         'received': {
-            'pavadzīme':     "Delivery note received by:",
+            'pavadzīme':     "Invoice received by:",
             'avansa rēķins': "Advance invoice received by:",
             'rēķins':        "Invoice received by:",
         },
@@ -91,11 +91,11 @@ LABELS = {
 }
 
 DOC_TYPES_EN = {
-    "Pavadzīme":               "Delivery Note",
+    "Pavadzīme":               "Invoice",
     "Rēķins":                  "Invoice",
     "Avansa rēķins":           "Advance Invoice",
     "E-rēķins":                "E-Invoice",
-    "Proformas pavadzīme":     "Proforma Delivery Note",
+    "Proformas pavadzīme":     "Proforma Invoice",
     "Proformas rēķins":        "Proforma Invoice",
     "Proformas avansa rēķins": "Proforma Advance Invoice",
 }
