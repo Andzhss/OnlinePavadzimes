@@ -1,0 +1,13 @@
+[Unit]
+Description=SIA Bratus pavadzīmes (Streamlit forma)
+After=network-online.target
+
+[Service]
+User=pavadzimes
+WorkingDirectory=/opt/pavadzimes/app
+Environment=PAVADZ_DATA_DIR=/opt/pavadzimes/data
+ExecStart=/opt/pavadzimes/.venv/bin/streamlit run app.py --server.address 127.0.0.1 --server.port 8786 --server.headless true --browser.gatherUsageStats false
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
