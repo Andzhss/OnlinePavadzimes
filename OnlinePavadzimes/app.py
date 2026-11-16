@@ -28,7 +28,7 @@ from invoice_core import (
     get_drive_service, upload_to_drive,
     load_history, _history_to_df, save_to_history, sync_history_from_github,
     get_next_invoice_number, _norm_client_name, clients_from_history, record_client,
-    load_presets, save_presets, data_lock,
+    load_presets, save_presets, data_lock, delete_invoices,
 )
 
 # ---------------------------------------------------------------------------
@@ -852,37 +852,54 @@ def render_invoice_app():
                 })
             hist_df = pd.DataFrame(hist_data)
 
-            edited_hist_df = st.data_editor(
-                hist_df,
-                num_rows="fixed",
-                use_container_width=True,
-                hide_index=True,
-                key="history_editor",
-                disabled=hist_df.columns.tolist()
-            )
-
-            # Ja rindas tika dzēstas, parādām pogu saglabāšanai
-            if len(edited_hist_df) < len(hist_df):
-                deleted_count = len(hist_df) - len(edited_hist_df)
-                st.warning(f"⚠️ {deleted_count} rinda(s) atzīmēta(s) dzēšanai.")
-                if st.button("💾 Apstiprināt dzēšanu", type="primary"):
-                    kept_nums = set(edited_hist_df["PR numurs"].tolist())
-                    new_history = [e for e in history
-                                   if e.get('pr_numurs', e.get('doc_id', '')) in kept_nums]
-                    df = _history_to_df(new_history)
-                    df.to_csv(LOCAL_HISTORY_PATH, index=False, encoding='utf-8')
-                    if get_github_token():
-                        success, msg = push_csv_to_github(df, GITHUB_HISTORY_PATH,
-                                                          f"Dzēsti {deleted_count} ieraksti no vēstures")
-                        if success:
-                            st.success("✅ Vēsture atjaunināta un saglabāta GitHub!")
-                        else:
-                            st.warning(f"Lokāli saglabāts, bet GitHub kļūda: {msg}")
-                    else:
-                        st.success("✅ Vēsture atjaunināta lokāli!")
-                    st.rerun()
+            st.dataframe(hist_df, use_container_width=True, hide_index=True)
         else:
             st.info("Vēsture ir tukša.")
+
+    render_delete_section(history, test_history)
+
+
+def render_delete_section(history, test_history):
+    flash = st.session_state.pop('del_msg', None)
+    with st.expander("🗑️ Dzēst pavadzīmes / rēķinus", expanded=bool(flash)):
+        if flash:
+            st.success(flash)
+        which = st.radio("No kuras vēstures", ["Izrakstītie", "Proformas (testa)"], horizontal=True,
+                         key="del_which")
+        entries = history if which == "Izrakstītie" else test_history
+        path, gh_path = ((LOCAL_HISTORY_PATH, GITHUB_HISTORY_PATH) if which == "Izrakstītie"
+                         else (LOCAL_TEST_HIST_PATH, GITHUB_TEST_HIST_PATH))
+        if not entries:
+            st.info("Šajā vēsturē nav ierakstu.")
+            return
+        labels_map = {
+            f"{e.get('pr_numurs', '')} — {e.get('pr_partneris', '')} — "
+            f"{e.get('kopeja_summa', '')} € ({e.get('datums', '')})": str(e.get('pr_numurs', ''))
+            for e in reversed(entries)
+        }
+        chosen = st.multiselect("Izvēlies dokumentus dzēšanai", list(labels_map.keys()), key="del_choice")
+        nums = [labels_map[c] for c in chosen]
+        if not nums:
+            return
+        if which == "Izrakstītie":
+            all_nums = [str(e.get('pr_numurs', '')) for e in entries]
+            tail = all_nums[-len(nums):]
+            if sorted(nums) != sorted(tail):
+                st.warning("Tu dzēs ne tikai pēdējo(-os) dokumentu — numerācijā paliks caurums. "
+                           "Grāmatvedībā izrakstītu dokumentu parasti nevis dzēš, bet anulē ar kredītrēķinu.")
+            else:
+                st.caption(f"Pēc dzēšanas nākamais numurs atkal būs {tail[0]}.")
+        confirm = st.checkbox(f"Jā, dzēst {len(nums)} dokumentu(s): {', '.join(nums)}", key="del_confirm")
+        if st.button("🗑️ Dzēst", type="primary", disabled=not confirm, key="del_btn"):
+            ok, msg, _ = delete_invoices(nums, path, gh_path)
+            if not ok:
+                st.error(msg)
+            else:
+                st.session_state.del_msg = f"✅ Izdzēsts: {', '.join(nums)}. " + msg.split(". ", 1)[-1]
+                for k in ("del_choice", "del_confirm"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+
 
 # ---------------------------------------------------------------------------
 # render_clients_app

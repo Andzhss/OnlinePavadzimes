@@ -328,6 +328,40 @@ def _save_to_history(invoice_data, local_path, github_path):
     else:
         return False, "Sistēmā nav ievadīts GITHUB_TOKEN"
 
+def delete_invoices(numbers, local_path, github_path):
+    """Izdzēš dokumentus pēc numura (piem. 'BR 0165') no vēstures.
+
+    Pirms tam saglabā vēstures kopiju un pārvieto dokumentu failus uz
+    DATA_DIR/backup/dzests-<laiks>/, lai kļūdu var atsaukt. Atgriež (ok, msg, backup_dir)."""
+    import shutil
+    numbers = {str(n).strip() for n in numbers if str(n).strip()}
+    if not numbers:
+        return False, "Nav izvēlēts neviens dokuments", ""
+    with data_lock():
+        history = load_history(local_path)
+        kept = [e for e in history if str(e.get('pr_numurs', e.get('doc_id', ''))).strip() not in numbers]
+        removed = len(history) - len(kept)
+        if not removed:
+            return False, "Šādi dokumenti vēsturē nav atrasti", ""
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_dir = os.path.join(DATA_DIR, "backup", f"dzests-{stamp}")
+        os.makedirs(backup_dir, exist_ok=True)
+        if os.path.exists(local_path):
+            shutil.copy2(local_path, backup_dir)
+        if os.path.isdir(DOCS_DIR):
+            suffixes = tuple(f"_{n.replace(' ', '_')}.{ext}" for n in numbers for ext in ("pdf", "docx"))
+            for f in os.listdir(DOCS_DIR):
+                if f.endswith(suffixes):
+                    shutil.move(os.path.join(DOCS_DIR, f), os.path.join(backup_dir, f))
+        df = _history_to_df(kept)
+        df.to_csv(local_path, index=False, encoding='utf-8')
+    msg = f"Izdzēsti {removed} ieraksti. Kopija: {backup_dir}"
+    if not LOCAL_MODE and get_github_token():
+        ok, gh_msg = push_csv_to_github(df, github_path, f"Dzēsti: {', '.join(sorted(numbers))}")
+        if not ok:
+            return True, f"{msg} (GitHub kļūda: {gh_msg})", backup_dir
+    return True, msg, backup_dir
+
 def sync_history_from_github(local_path, github_path):
     content = fetch_csv_from_github(github_path)
     if content and ('doc_id' in content or 'kartas_nr' in content):
