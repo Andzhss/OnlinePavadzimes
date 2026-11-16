@@ -21,6 +21,8 @@ from mcp.server.auth.provider import (
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
+import invoice_core as core
+
 ACCESS_TTL = 8 * 3600
 REFRESH_TTL = 90 * 24 * 3600
 CODE_TTL = 300
@@ -131,7 +133,36 @@ button{{width:100%;padding:10px;font-size:16px;background:#111;color:#fff;border
 <input type="password" name="password" placeholder="Parole" autofocus required>
 <button>Atļaut piekļuvi</button></form></body></html>""")
 
+    def _form_page(self, error=""):
+        err = f'<p class="err">{html.escape(error)}</p>' if error else ""
+        return HTMLResponse(f"""<!doctype html><html lang="lv"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>SIA Bratus — pieteikšanās</title>
+<style>body{{font-family:system-ui,sans-serif;background:#f5f3ee;display:grid;place-items:center;min-height:100vh;margin:0}}
+form{{background:#fff;padding:28px;width:min(340px,90vw);box-shadow:0 2px 12px #0001}}
+h1{{font-size:18px;margin:0 0 6px}}p{{color:#555;font-size:14px;margin:0 0 18px}}
+input{{width:100%;box-sizing:border-box;padding:10px;font-size:16px;border:1px solid #ccc;margin-bottom:12px}}
+button{{width:100%;padding:10px;font-size:16px;background:#111;color:#fff;border:0;cursor:pointer}}
+.err{{color:#b00020}}</style></head><body><form method="post">
+<h1>SIA Bratus pavadzīmes</h1><p>Šajā ierīcē parole būs jāievada reizi {core.AUTH_COOKIE_DAYS} dienās.</p>{err}
+<input type="hidden" name="form" value="1">
+<input type="password" name="password" placeholder="Parole" autocomplete="current-password" autofocus required>
+<button>Ieiet</button></form></body></html>""")
+
     async def login(self, request: Request) -> Response:
+        # Bez ?req= — pieteikšanās formai (Streamlit): uzliek sīkdatni un aizsūta uz sākumu
+        if request.method == "GET" and "req" not in request.query_params:
+            return self._form_page()
+        if request.method == "POST":
+            form = await request.form()
+            if form.get("form") == "1":
+                if not hmac.compare_digest(str(form.get("password", "")).encode(), self.password.encode()):
+                    await asyncio.sleep(2)
+                    return self._form_page("Nepareiza parole")
+                resp = RedirectResponse("/", status_code=303)
+                resp.set_cookie(core.AUTH_COOKIE, core.make_auth_cookie(self.password),
+                                max_age=core.AUTH_COOKIE_DAYS * 86400, httponly=True,
+                                secure=True, samesite="lax", path="/")
+                return resp
         if request.method == "GET":
             req_id = request.query_params.get("req", "")
             if req_id not in self.pending:

@@ -29,6 +29,7 @@ from invoice_core import (
     load_history, _history_to_df, save_to_history, sync_history_from_github,
     get_next_invoice_number, _norm_client_name, clients_from_history, record_client,
     load_presets, save_presets, data_lock, delete_invoices,
+    AUTH_COOKIE, check_auth_cookie,
 )
 
 # ---------------------------------------------------------------------------
@@ -1031,22 +1032,20 @@ def render_clients_app():
 # ---------------------------------------------------------------------------
 
 def require_password():
-    """Caur Cloudflare tuneli (publiski) prasa paroli; Tailscale tīklā — nē.
-    Cloudflare vienmēr pieliek Cf-Connecting-Ip, tailscale serve to nedara."""
+    """Caur Cloudflare tuneli (publiski) prasa pieteikties; Tailscale tīklā — nē.
+    Cloudflare vienmēr pieliek Cf-Connecting-Ip, tailscale serve to nedara.
+    Pieteikšanās lapa (/login, MCP serverī) uzliek parakstītu sīkdatni uz 90 dienām."""
     if not LOCAL_MODE or 'cf-connecting-ip' not in {k.lower() for k in st.context.headers.keys()}:
         return True
-    if st.session_state.get('authed'):
-        return True
     password = os.environ.get("PAVADZ_PASSWORD", "")
+    if check_auth_cookie(st.context.cookies.get(AUTH_COOKIE, ""), password):
+        return True
     st.title("SIA BRATUS Rēķinu Ģenerators")
-    with st.form("login"):
-        pw = st.text_input("Parole", type="password")
-        if st.form_submit_button("Ieiet"):
-            if password and hmac.compare_digest(pw.encode(), password.encode()):
-                st.session_state.authed = True
-                st.rerun()
-            time.sleep(2)
-            st.error("Nepareiza parole")
+    # Tajā pašā cilnē (st.link_button atvērtu jaunu cilni)
+    st.markdown('<a href="/login" target="_self" style="display:inline-block;padding:10px 22px;'
+                'background:#111;color:#fff;text-decoration:none;font-weight:600">🔑 Ieiet</a>',
+                unsafe_allow_html=True)
+    st.caption("Parole šajā ierīcē būs jāievada reizi 90 dienās.")
     return False
 
 def main():

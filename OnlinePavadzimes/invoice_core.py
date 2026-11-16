@@ -635,3 +635,34 @@ def write_documents(invoice_data, upload=True):
         drive_ok = upload_to_drive(buf, name, mime) if upload and get_drive_service() else False
         out[ext] = {'file': name, 'drive': drive_ok}
     return out
+
+
+# ---------------------------------------------------------------------------
+# Formas pieteikšanās sīkdatne (publiskā adrese). Parakstīta ar paroli + slepeno
+# atslēgu, tāpēc paroles maiņa automātiski izraksta visus.
+# ---------------------------------------------------------------------------
+
+AUTH_COOKIE = "pv_auth"
+AUTH_COOKIE_DAYS = 90
+
+
+def _auth_key(password):
+    import hashlib
+    path = os.path.join(DATA_DIR, ".docs_secret")
+    secret = open(path).read().strip() if os.path.exists(path) else ""
+    return hashlib.sha256(f"{secret}:{password}".encode()).digest()
+
+
+def make_auth_cookie(password):
+    import hashlib, hmac, time
+    exp = str(int(time.time()) + AUTH_COOKIE_DAYS * 86400)
+    return f"{exp}.{hmac.new(_auth_key(password), exp.encode(), hashlib.sha256).hexdigest()}"
+
+
+def check_auth_cookie(value, password):
+    import hashlib, hmac, time
+    if not value or not password or "." not in value:
+        return False
+    exp, sig = value.split(".", 1)
+    good = hmac.new(_auth_key(password), exp.encode(), hashlib.sha256).hexdigest()
+    return exp.isdigit() and int(exp) > time.time() and hmac.compare_digest(sig, good)
