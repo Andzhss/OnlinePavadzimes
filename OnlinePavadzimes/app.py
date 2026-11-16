@@ -6,6 +6,8 @@ import os
 import io
 import requests
 import base64
+import hmac
+import time
 
 # --- Google Bibliotēkas ---
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -1011,7 +1013,28 @@ def render_clients_app():
 # main
 # ---------------------------------------------------------------------------
 
+def require_password():
+    """Caur Cloudflare tuneli (publiski) prasa paroli; Tailscale tīklā — nē.
+    Cloudflare vienmēr pieliek Cf-Connecting-Ip, tailscale serve to nedara."""
+    if not LOCAL_MODE or 'cf-connecting-ip' not in {k.lower() for k in st.context.headers.keys()}:
+        return True
+    if st.session_state.get('authed'):
+        return True
+    password = os.environ.get("PAVADZ_PASSWORD", "")
+    st.title("SIA BRATUS Rēķinu Ģenerators")
+    with st.form("login"):
+        pw = st.text_input("Parole", type="password")
+        if st.form_submit_button("Ieiet"):
+            if password and hmac.compare_digest(pw.encode(), password.encode()):
+                st.session_state.authed = True
+                st.rerun()
+            time.sleep(2)
+            st.error("Nepareiza parole")
+    return False
+
 def main():
+    if not require_password():
+        return
     st.title("SIA BRATUS Rēķinu Ģenerators")
     tab_invoice, tab_presets, tab_clients = st.tabs([
         "📄 Rēķina izveide", "⚙️ Produktu sagataves", "📊 Klientu pārskats"

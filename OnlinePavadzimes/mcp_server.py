@@ -4,7 +4,10 @@ Darbojas uz Thinkpad blakus Streamlit formai un lieto tos pašus datus (invoice_
 Palaišana: PAVADZ_DATA_DIR=/opt/pavadzimes/data python mcp_server.py
 """
 import datetime
+import hashlib
+import hmac
 import os
+import secrets
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -21,6 +24,8 @@ HOST = os.environ.get("PAVADZ_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("PAVADZ_MCP_PORT", "8787"))
 PUBLIC_URL = os.environ.get("PAVADZ_PUBLIC_URL", f"http://127.0.0.1:{PORT}").rstrip("/")
 ALLOWED_HOSTS = [h for h in os.environ.get("PAVADZ_ALLOWED_HOSTS", "").split(",") if h]
+# Publiskā instance (Cloudflare tunelis, claude.ai) prasa OAuth pieteikšanos ar paroli.
+PUBLIC_AUTH = os.environ.get("PAVADZ_PUBLIC_AUTH") == "1"
 
 INSTRUCTIONS = """SIA Bratus (Latvija) pavadzīmju un rēķinu izrakstīšana.
 
@@ -39,7 +44,47 @@ security = TransportSecuritySettings(
     allowed_origins=["http://127.0.0.1:*", "http://localhost:*", *[f"https://{h}" for h in ALLOWED_HOSTS]],
 )
 
-mcp = MCPServer("pavadzimes", instructions=INSTRUCTIONS)
+auth_kwargs = {}
+oauth = None
+if PUBLIC_AUTH:
+    from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
+    from mcp_auth import PasswordOAuthProvider
+    password = os.environ.get("PAVADZ_PASSWORD", "")
+    if len(password) < 10:
+        raise SystemExit("PAVADZ_PASSWORD nav uzstādīta (vismaz 10 simboli)")
+    oauth = PasswordOAuthProvider(core.DATA_DIR, password, PUBLIC_URL)
+    auth_kwargs = dict(
+        auth_server_provider=oauth,
+        auth=AuthSettings(
+            issuer_url=PUBLIC_URL,
+            resource_server_url=f"{PUBLIC_URL}/mcp",
+            validate_token_resource=False,
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+            revocation_options=RevocationOptions(enabled=True),
+        ),
+    )
+
+mcp = MCPServer("pavadzimes", instructions=INSTRUCTIONS, **auth_kwargs)
+
+
+def _docs_secret():
+    path = os.path.join(core.DATA_DIR, ".docs_secret")
+    if not os.path.exists(path):
+        os.makedirs(core.DATA_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(secrets.token_hex(32))
+        os.chmod(path, 0o600)
+    with open(path) as f:
+        return f.read().strip().encode()
+
+
+def _sig(name):
+    return hmac.new(_docs_secret(), name.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def doc_url(name):
+    """Lejupielādes saite ar parakstu — faila nosaukumu (BR numuru) uzminēt nepietiek."""
+    return f"{PUBLIC_URL}/docs/{_sig(name)}/{name}"
 
 
 class Client(BaseModel):
@@ -217,8 +262,8 @@ def create_invoice(invoice: InvoiceRequest) -> dict:
     out = _summary(d)
     out['saglabats'] = 'proformu vēsturē' if invoice.proforma else 'grāmatvedības vēsturē'
     out['jauns_klients'] = added
-    out['pdf'] = f"{PUBLIC_URL}/docs/{files['pdf']['file']}"
-    out['word'] = f"{PUBLIC_URL}/docs/{files['docx']['file']}"
+    out['pdf'] = doc_url(files['pdf']['file'])
+    out['word'] = doc_url(files['docx']['file'])
     out['google_drive'] = files['pdf']['drive']
     return out
 
@@ -245,17 +290,21 @@ def list_invoices(client: str = "", limit: int = 15) -> list[dict]:
         files = sorted(f for f in os.listdir(core.DOCS_DIR) if f.endswith(f"_{prefix}.pdf")) \
             if os.path.isdir(core.DOCS_DIR) else []
         if files:
-            r['pdf'] = f"{PUBLIC_URL}/docs/{files[-1]}"
+            r['pdf'] = doc_url(files[-1])
     return [{k: ('' if str(v) == 'nan' else v) for k, v in r.items()} for r in rows]
 
 
-@mcp.custom_route("/docs/{name}", methods=["GET"])
+@mcp.custom_route("/docs/{sig}/{name}", methods=["GET"])
 async def download(request: Request) -> Response:
     name = os.path.basename(request.path_params['name'])
     path = os.path.join(core.DOCS_DIR, name)
-    if not os.path.isfile(path):
+    if not hmac.compare_digest(request.path_params['sig'], _sig(name)) or not os.path.isfile(path):
         return JSONResponse({'error': 'nav atrasts'}, status_code=404)
     return FileResponse(path, filename=name)
+
+
+if oauth:
+    mcp.custom_route("/login", methods=["GET", "POST"])(oauth.login)
 
 
 @mcp.custom_route("/health", methods=["GET"])

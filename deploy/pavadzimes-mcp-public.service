@@ -1,0 +1,19 @@
+[Unit]
+Description=SIA Bratus pavadzīmes — publiskais MCP serveris (claude.ai, ar OAuth paroli)
+After=network-online.target
+
+[Service]
+User=pavadzimes
+WorkingDirectory=/opt/pavadzimes/app
+Environment=PAVADZ_DATA_DIR=/opt/pavadzimes/data
+Environment=PAVADZ_MCP_PORT=8788
+Environment=PAVADZ_PUBLIC_AUTH=1
+Environment=PAVADZ_PUBLIC_URL=https://pavadzimes.brworks.lv
+Environment=PAVADZ_ALLOWED_HOSTS=pavadzimes.brworks.lv
+# PAVADZ_PASSWORD
+EnvironmentFile=/opt/pavadzimes/data/env
+ExecStart=/opt/pavadzimes/.venv/bin/python mcp_server.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

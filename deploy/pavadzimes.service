@@ -6,6 +6,7 @@ After=network-online.target
 User=pavadzimes
 WorkingDirectory=/opt/pavadzimes/app
 Environment=PAVADZ_DATA_DIR=/opt/pavadzimes/data
+EnvironmentFile=-/opt/pavadzimes/data/env
 ExecStart=/opt/pavadzimes/.venv/bin/streamlit run app.py --server.address 127.0.0.1 --server.port 8786 --server.headless true --browser.gatherUsageStats false
 Restart=on-failure
 

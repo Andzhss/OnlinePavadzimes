@@ -23,7 +23,7 @@ fi
 echo "→ Kods"
 rsync -a --delete --exclude __pycache__ --exclude '*.csv' --exclude credentials.json --exclude token.json \
   "$SRC/" "$HOST:$ROOT/app/"
-rsync -a "$HERE"/pavadzimes.service "$HERE"/pavadzimes-mcp.service "$HOST:/etc/systemd/system/"
+rsync -a "$HERE"/pavadzimes.service "$HERE"/pavadzimes-mcp.service "$HERE"/pavadzimes-mcp-public.service "$HOST:/etc/systemd/system/"
 
 if [[ "${1:-}" == "--setup" ]]; then
   ssh "$HOST" "test -d $ROOT/.venv || python3 -m venv $ROOT/.venv; $ROOT/.venv/bin/pip install -q -r $ROOT/app/requirements.txt 'mcp>=2.3,<3'"
@@ -33,4 +33,4 @@ elif [[ "${1:-}" == "--import-data" ]]; then
   import_data
 fi
 
-ssh "$HOST" "chown -R pavadzimes:pavadzimes $ROOT && systemctl daemon-reload && systemctl enable -q pavadzimes pavadzimes-mcp && systemctl restart pavadzimes pavadzimes-mcp && sleep 4 && curl -sf http://127.0.0.1:8787/health && echo && curl -sf -o /dev/null -w 'forma %{http_code}\n' http://127.0.0.1:8786/"
+ssh "$HOST" "chown -R pavadzimes:pavadzimes $ROOT && systemctl daemon-reload && systemctl enable -q pavadzimes pavadzimes-mcp pavadzimes-mcp-public && systemctl restart pavadzimes pavadzimes-mcp pavadzimes-mcp-public && sleep 4 && curl -sf http://127.0.0.1:8787/health && echo && curl -sf -o /dev/null -w 'forma %{http_code}\n' http://127.0.0.1:8786/"
