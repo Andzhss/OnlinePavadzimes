@@ -50,8 +50,8 @@ if PUBLIC_AUTH:
     from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
     from mcp_auth import PasswordOAuthProvider
     password = os.environ.get("PAVADZ_PASSWORD", "")
-    if len(password) < 10:
-        raise SystemExit("PAVADZ_PASSWORD nav uzstādīta (vismaz 10 simboli)")
+    if len(password) < 8:
+        raise SystemExit("PAVADZ_PASSWORD nav uzstādīta (vismaz 8 simboli)")
     oauth = PasswordOAuthProvider(core.DATA_DIR, password, PUBLIC_URL)
     auth_kwargs = dict(
         auth_server_provider=oauth,
